@@ -10,6 +10,7 @@ import '../../models/folder.dart';
 import '../../models/question_set.dart';
 import '../../providers/exam_session_notifier.dart';
 import '../../providers/supabase_providers.dart';
+import '../../services/local_db.dart';
 import '../results/results_screen.dart';
 
 String _formatDuration(Duration d) {
@@ -72,54 +73,69 @@ class _ExamRunnerScreenState extends ConsumerState<ExamRunnerScreen> with Widget
     return leave ?? false;
   }
 
+  Map<String, dynamic> _answerInsertMap(RunnerQuestion rq) {
+    final status = !rq.isAnswered
+        ? AnswerStatus.skipped
+        : (rq.isCorrect ? AnswerStatus.correct : AnswerStatus.incorrect);
+    return {
+      'question_id': rq.question.id,
+      if (rq.selectedOriginalIndex != null) 'selected_answer': rq.selectedOriginalIndex,
+      'status': status.value,
+      if (rq.timeTakenSeconds != null) 'time_taken_seconds': rq.timeTakenSeconds,
+    };
+  }
+
   Future<void> _finish(ExamSessionState session) async {
     if (_finishing) return;
     _finishing = true;
 
     final service = ref.read(supabaseServiceProvider);
+    final attemptInsertMap = Attempt(
+      id: '',
+      questionSetId: widget.questionSet.id,
+      sourceType: session.config.sourceType,
+      mode: session.config.mode,
+      marksPerCorrect: session.config.marksPerCorrect,
+      negativeMarksPerWrong: session.config.negativeMarksPerWrong,
+      examTimerMinutes: session.config.examTimerMinutes,
+      perQuestionTimerSeconds: session.config.perQuestionTimerSeconds,
+      totalQuestions: session.questions.length,
+      correctCount: session.correctCount,
+      wrongCount: session.wrongCount,
+      skippedCount: session.skippedCount,
+      totalScore: session.totalScore,
+      startedAt: session.startedAt,
+      completedAt: DateTime.now(),
+      durationSeconds: DateTime.now().difference(session.startedAt).inSeconds,
+    ).toInsertMap();
+    final answerInsertMaps = [for (final rq in session.questions) _answerInsertMap(rq)];
+
     Attempt? saved;
+    var queued = false;
     try {
-      saved = await service.createAttempt(
-        Attempt(
-          id: '',
-          questionSetId: widget.questionSet.id,
-          sourceType: session.config.sourceType,
-          mode: session.config.mode,
-          marksPerCorrect: session.config.marksPerCorrect,
-          negativeMarksPerWrong: session.config.negativeMarksPerWrong,
-          examTimerMinutes: session.config.examTimerMinutes,
-          perQuestionTimerSeconds: session.config.perQuestionTimerSeconds,
-          totalQuestions: session.questions.length,
-          correctCount: session.correctCount,
-          wrongCount: session.wrongCount,
-          skippedCount: session.skippedCount,
-          totalScore: session.totalScore,
-          startedAt: session.startedAt,
-          completedAt: DateTime.now(),
-          durationSeconds: DateTime.now().difference(session.startedAt).inSeconds,
-        ),
-      );
-      await service.saveAttemptAnswers([
-        for (final rq in session.questions)
-          AttemptAnswer(
-            id: '',
-            attemptId: saved.id,
-            questionId: rq.question.id,
-            selectedAnswer: rq.selectedOriginalIndex,
-            status: !rq.isAnswered
-                ? AnswerStatus.skipped
-                : (rq.isCorrect ? AnswerStatus.correct : AnswerStatus.incorrect),
-            timeTakenSeconds: rq.timeTakenSeconds,
-            answeredAt: DateTime.now(),
-          ),
+      final savedRow = await service.insertAttemptRaw(attemptInsertMap);
+      saved = Attempt.fromMap(savedRow);
+      await service.insertAttemptAnswersRaw([
+        for (final a in answerInsertMaps) {...a, 'attempt_id': saved.id},
       ]);
     } catch (e) {
+      try {
+        await LocalDb.enqueuePendingAttempt(attemptInsertMap, answerInsertMaps);
+        queued = true;
+      } catch (_) {
+        // Local disk write also failed — nothing more we can do; the toast
+        // below reports the original network/server error.
+      }
       if (mounted) {
         showFToast(
           context: context,
-          variant: FToastVariant.destructive,
-          title: const Text('Could not save this attempt'),
-          description: Text('$e'),
+          variant: queued ? FToastVariant.primary : FToastVariant.destructive,
+          title: Text(queued ? 'Saved locally' : 'Could not save this attempt'),
+          description: Text(
+            queued
+                ? "You're offline — this will sync automatically once you're back online."
+                : '$e',
+          ),
         );
       }
     }
@@ -133,6 +149,7 @@ class _ExamRunnerScreenState extends ConsumerState<ExamRunnerScreen> with Widget
           questionSet: widget.questionSet,
           session: session,
           savedAttempt: saved,
+          queuedForSync: queued,
         ),
       ),
     );

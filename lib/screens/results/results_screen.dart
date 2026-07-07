@@ -15,15 +15,20 @@ class ResultsScreen extends StatelessWidget {
     required this.questionSet,
     required this.session,
     required this.savedAttempt,
+    this.queuedForSync = false,
   });
 
   final Folder folder;
   final QuestionSet questionSet;
   final ExamSessionState session;
 
-  /// Null if persisting the attempt to Supabase failed — the review below
-  /// still reflects this session's answers, they just weren't saved.
+  /// Null if persisting the attempt to Supabase didn't succeed immediately —
+  /// the review below still reflects this session's answers regardless.
   final Attempt? savedAttempt;
+
+  /// True if [savedAttempt] is null because the attempt was queued locally
+  /// (offline) rather than lost outright — see `ExamRunnerScreen._finish`.
+  final bool queuedForSync;
 
   @override
   Widget build(BuildContext context) {
@@ -38,9 +43,13 @@ class ResultsScreen extends StatelessWidget {
         children: [
           if (savedAttempt == null)
             FAlert(
-              variant: FAlertVariant.destructive,
-              title: const Text('Not saved'),
-              subtitle: const Text('This attempt could not be uploaded. Your score below is accurate but won\'t appear in history.'),
+              variant: queuedForSync ? FAlertVariant.primary : FAlertVariant.destructive,
+              title: Text(queuedForSync ? 'Saved locally' : 'Not saved'),
+              subtitle: Text(
+                queuedForSync
+                    ? "You're offline — this attempt will sync automatically once you're back online."
+                    : 'This attempt could not be uploaded. Your score below is accurate but won\'t appear in history.',
+              ),
             ),
           const SizedBox(height: 12),
           FCard(

@@ -14,8 +14,15 @@ Companion to [PRD.md](./PRD.md). Tracks the build order and what's done so a fut
 ## Phase 1 — Data layer
 - [x] Dart models mirroring schema: `Folder`, `QuestionSet`, `Question`, `Attempt`, `AttemptAnswer` (`lib/models/`)
 - [x] JSON import: file picker → `jsonDecode` → schema validation (`lib/utils/question_set_validator.dart`, §4/§5.1 of PRD: required fields, `correct_answer` range check, duplicate `id` check) → surfaced per-question errors on failure (`lib/screens/import/import_screen.dart`)
-- [x] Supabase service layer (`lib/services/supabase_service.dart`): CRUD for folders/question_sets/questions, insert attempts + attempt_answers, fetch answers for wrong/skipped pool derivation
-- [ ] Local cache (sqflite): active question set + in-progress attempt for offline play; a simple pending-sync queue table for completed attempts made offline — **not started**, `sqflite` dependency is added but unused so far
+- [x] Supabase service layer (`lib/services/supabase_service.dart`): CRUD for folders/question_sets/questions, insert attempts + attempt_answers, fetch answers for wrong/skipped pool derivation, plus raw-map `insertAttemptRaw`/`insertAttemptAnswersRaw` for the offline queue below
+- [x] Local cache (`lib/services/local_db.dart`, sqflite): `questionsForSetProvider` caches a set's questions to a local `cached_questions` table on every successful fetch and falls back to that cache if the network call fails, so a previously-opened set can still be retaken offline (§8). A `pending_attempts` table queues completed attempts (as raw Supabase insert payloads, not model instances — see below) that failed to upload.
+- [ ] Not done: caching the *in-progress* attempt itself (so force-quitting mid-exam doesn't lose it) — PRD §1.1 calls this out but also flags it as the smaller half ("a simple pending-sync queue table is enough"); skipped as lower value for a v1 personal tool. `ExamSessionState` lives in memory only via `ExamSessionNotifier` and is lost on process kill.
+
+### Offline sync queue (Phase 5 item, built alongside the cache since they share the same local_db)
+- [x] `lib/services/sync_service.dart` — `SyncService.flushPending()` replays queued attempts: inserts the attempt row, stamps the returned id onto each queued answer map, inserts the answers, then removes the queue row. Stops at the first failure (still offline / real server error) and leaves the rest queued for the next trigger.
+- [x] Triggers: once at app start and on every `Connectivity().onConnectivityChanged` event that isn't `ConnectivityResult.none`, both wired in `lib/main.dart`.
+- [x] `ExamRunnerScreen._finish()` now builds raw insert maps up front; on any exception from the direct Supabase insert it queues via `LocalDb.enqueuePendingAttempt` and tells the user via toast + a "Saved locally" `FAlert` on the results screen (`ResultsScreen.queuedForSync`) instead of the earlier "Not saved" framing, which was only accurate for genuine failures, not offline ones.
+- [ ] Not handled: a queued attempt that fails for a *non-connectivity* reason (e.g. a real validation/server error) will retry forever and never surface as a permanent failure to the user — fine for v1's mostly-offline failure mode, but worth revisiting if that turns out to happen in practice.
 
 ## Phase 2 — Exam session
 - [x] Folder browser (`lib/screens/folders/folder_list_screen.dart`) → set list (`question_set_list_screen.dart`) → import screen wired end-to-end
@@ -28,7 +35,7 @@ Companion to [PRD.md](./PRD.md). Tracks the build order and what's done so a fut
 ## Phase 3 — Results & retry pools
 - [x] Results screen (`lib/screens/results/results_screen.dart`): score, correct/wrong/skipped counts, total time, per-question your-answer vs. correct-answer vs. skipped + explanation (via `FCard` per question)
 - [x] "Retry wrong" / "Retry skipped" buttons on the results screen — push `ExamSetupScreen` with `initialSourceType` pre-selected (`AttemptSourceType.wrongAnswersRetry`/`skippedRetry`); setup screen still recomputes the pool from *all* attempts of the set (not just this one session), which is the correct scope per §5.2.1
-- [ ] Dedicated Wrong Answer Bank / Skipped Bank browsing screens (filterable by topic/difficulty) — not built; pool derivation logic already exists in `lib/utils/mastery.dart` (`QuestionPools.wrongPool`/`skippedPool`) and is exercised by both exam setup and progress dashboard, so a browsing screen is mostly UI work reusing that
+- [x] Wrong Answer Bank / Skipped Bank browsing screen (`lib/screens/bank/question_bank_screen.dart`, one screen parameterized by `BankPoolType.wrong`/`.skipped` rather than two near-duplicate files), filterable by topic/difficulty (`FSelect`), with a "Start exam with these N questions" button that jumps to `ExamSetupScreen` with the source + filters pre-applied (`initialTopicFilter`/`initialDifficultyFilter` params added for this). Entry points: "Browse wrong answers" / "Browse skipped" ghost buttons in exam setup, shown only when the respective pool is non-empty.
 
 ## Phase 4 — Progress dashboard
 - [x] Attempt history list (`lib/screens/progress/progress_screen.dart`, via `attemptHistoryProvider` → `SupabaseService.fetchAttemptHistory`): date, source/mode, score, duration
@@ -40,7 +47,7 @@ Companion to [PRD.md](./PRD.md). Tracks the build order and what's done so a fut
 - Entry point: tap the chart-line icon in the exam setup screen's header (`FHeaderAction` next to the back button) — there's no dashboard link from the folder/set list yet, only from a set you're about to attempt
 
 ## Phase 5 — Polish
-- [ ] Offline sync: flush pending-sync queue when connectivity returns (`connectivity_plus`)
+- [x] Offline sync: flush pending-sync queue when connectivity returns (`connectivity_plus`) — see Phase 1 section above, built together with the local cache
 - [ ] Background import validation (isolate/compute) so large JSON files don't block UI
 - [ ] Empty/error states across screens
 
@@ -62,3 +69,4 @@ Companion to [PRD.md](./PRD.md). Tracks the build order and what's done so a fut
 - `supabase_flutter` 2.16 deprecated `anonKey` in favor of `publishableKey` on `Supabase.initialize` — already using the new name in `lib/main.dart`, don't revert.
 - `test/widget_test.dart` is a placeholder; the default counter test was removed since it referenced the deleted boilerplate `MyApp`/`MyHomePage`. Real widget tests need a mocked Supabase client since `main()` calls `Supabase.initialize()` before `runApp()`.
 - Windows desktop builds need Developer Mode enabled (`start ms-settings:developers`) for plugin symlink support — surfaced as a warning during `flutter pub get`, not yet resolved on this machine.
+- `sqflite` only has native platform code for Android/iOS. `lib/main.dart` switches to `sqflite_common_ffi`'s `databaseFactoryFfi` on Windows/Linux/macOS (guarded by `defaultTargetPlatform`, skipped on web) purely so the local cache/offline-queue feature is testable via `flutter run -d windows` on this dev machine — real mobile builds use the default sqflite plugin and never touch that branch.

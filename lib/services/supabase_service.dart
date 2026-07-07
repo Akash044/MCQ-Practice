@@ -115,6 +115,18 @@ class SupabaseService {
         .insert(answers.map((a) => a.toInsertMap()).toList());
   }
 
+  /// Raw-map variants used by [LocalDb]'s pending-sync queue: a queued
+  /// attempt is stored as plain insert payloads (not [Attempt]/[AttemptAnswer]
+  /// instances) since it's serialized to disk while offline and replayed
+  /// later, possibly across app restarts.
+  Future<Map<String, dynamic>> insertAttemptRaw(Map<String, dynamic> insertMap) async {
+    return _client.from('attempts').insert(insertMap).select().single();
+  }
+
+  Future<void> insertAttemptAnswersRaw(List<Map<String, dynamic>> insertMaps) async {
+    await _client.from('attempt_answers').insert(insertMaps);
+  }
+
   Future<List<Attempt>> fetchAttemptHistory(String questionSetId) async {
     final rows = await _client
         .from('attempts')

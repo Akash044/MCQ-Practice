@@ -12,6 +12,7 @@ import '../../models/question_set.dart';
 import '../../providers/exam_providers.dart';
 import '../../providers/exam_session_notifier.dart';
 import '../../utils/mastery.dart';
+import '../bank/question_bank_screen.dart';
 import '../progress/progress_screen.dart';
 import 'exam_runner_screen.dart';
 
@@ -21,14 +22,19 @@ class ExamSetupScreen extends ConsumerStatefulWidget {
     required this.folder,
     required this.questionSet,
     this.initialSourceType = AttemptSourceType.fullSet,
+    this.initialTopicFilter,
+    this.initialDifficultyFilter,
   });
 
   final Folder folder;
   final QuestionSet questionSet;
 
-  /// Lets the results screen jump here with "Wrong answers" or "Skipped"
-  /// pre-selected instead of always defaulting to the full set.
+  /// Lets the results screen or a question bank jump here with a source
+  /// (and optionally a topic/difficulty) pre-selected instead of always
+  /// defaulting to the unfiltered full set.
   final AttemptSourceType initialSourceType;
+  final String? initialTopicFilter;
+  final String? initialDifficultyFilter;
 
   @override
   ConsumerState<ExamSetupScreen> createState() => _ExamSetupScreenState();
@@ -37,8 +43,8 @@ class ExamSetupScreen extends ConsumerStatefulWidget {
 class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
   AttemptMode _mode = AttemptMode.practice;
   late AttemptSourceType _sourceType = widget.initialSourceType;
-  String? _topicFilter;
-  String? _difficultyFilter;
+  late String? _topicFilter = widget.initialTopicFilter;
+  late String? _difficultyFilter = widget.initialDifficultyFilter;
   bool _shuffleQuestions = true;
   bool _shuffleOptions = true;
 
@@ -121,6 +127,19 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
       context,
       MaterialPageRoute(
         builder: (context) => ExamRunnerScreen(folder: widget.folder, questionSet: widget.questionSet),
+      ),
+    );
+  }
+
+  void _openBank(BankPoolType poolType) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => QuestionBankScreen(
+          folder: widget.folder,
+          questionSet: widget.questionSet,
+          poolType: poolType,
+        ),
       ),
     );
   }
@@ -210,6 +229,29 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
             ),
           ],
         ),
+        if (wrongCount > 0 || skippedCount > 0) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              if (wrongCount > 0)
+                Expanded(
+                  child: FButton(
+                    variant: FButtonVariant.ghost,
+                    onPress: () => _openBank(BankPoolType.wrong),
+                    child: const Text('Browse wrong answers'),
+                  ),
+                ),
+              if (skippedCount > 0)
+                Expanded(
+                  child: FButton(
+                    variant: FButtonVariant.ghost,
+                    onPress: () => _openBank(BankPoolType.skipped),
+                    child: const Text('Browse skipped'),
+                  ),
+                ),
+            ],
+          ),
+        ],
         const SizedBox(height: 16),
         if (topics.isNotEmpty) ...[
           FSelect<String?>(

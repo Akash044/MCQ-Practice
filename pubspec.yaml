@@ -63,6 +63,10 @@ dependencies:
   # UI component library (shadcn/ui-inspired widgets)
   forui: ^0.21.3
 
+  # sqflite backend for desktop dev/testing (Windows/Linux/macOS); mobile
+  # uses the platform sqflite implementation directly
+  sqflite_common_ffi: ^2.4.0+3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
