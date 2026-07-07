@@ -12,6 +12,7 @@ import '../../models/question_set.dart';
 import '../../providers/exam_providers.dart';
 import '../../providers/exam_session_notifier.dart';
 import '../../utils/mastery.dart';
+import '../../widgets/error_state.dart';
 import '../bank/question_bank_screen.dart';
 import '../progress/progress_screen.dart';
 import 'exam_runner_screen.dart';
@@ -59,9 +60,12 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
   @override
   void initState() {
     super.initState();
-    _marksController = TextEditingController(text: '${widget.questionSet.defaultMarksPerCorrect}');
-    _negativeMarksController =
-        TextEditingController(text: '${widget.questionSet.defaultNegativeMarksPerWrong}');
+    _marksController = TextEditingController(
+      text: '${widget.questionSet.defaultMarksPerCorrect}',
+    );
+    _negativeMarksController = TextEditingController(
+      text: '${widget.questionSet.defaultNegativeMarksPerWrong}',
+    );
   }
 
   @override
@@ -87,7 +91,9 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
 
     final filtered = base.where((q) {
       if (_topicFilter != null && q.topic != _topicFilter) return false;
-      if (_difficultyFilter != null && q.difficulty != _difficultyFilter) return false;
+      if (_difficultyFilter != null && q.difficulty != _difficultyFilter) {
+        return false;
+      }
       return true;
     }).toList();
 
@@ -96,37 +102,51 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
         context: context,
         variant: FToastVariant.destructive,
         title: const Text('No questions match'),
-        description: const Text('Try a different source or clear your filters.'),
+        description: const Text(
+          'Try a different source or clear your filters.',
+        ),
       );
       return;
     }
 
     final effectiveSourceType =
-        _sourceType == AttemptSourceType.fullSet && (_topicFilter != null || _difficultyFilter != null)
-            ? AttemptSourceType.custom
-            : _sourceType;
+        _sourceType == AttemptSourceType.fullSet &&
+            (_topicFilter != null || _difficultyFilter != null)
+        ? AttemptSourceType.custom
+        : _sourceType;
 
     final config = ExamConfig(
       mode: _mode,
       sourceType: effectiveSourceType,
       topicFilter: _topicFilter,
       difficultyFilter: _difficultyFilter,
-      marksPerCorrect: num.tryParse(_marksController.text) ?? widget.questionSet.defaultMarksPerCorrect,
+      marksPerCorrect:
+          num.tryParse(_marksController.text) ??
+          widget.questionSet.defaultMarksPerCorrect,
       negativeMarksPerWrong:
-          num.tryParse(_negativeMarksController.text) ?? widget.questionSet.defaultNegativeMarksPerWrong,
-      examTimerMinutes: _examTimerEnabled ? int.tryParse(_examMinutesController.text) : null,
-      perQuestionTimerSeconds:
-          _perQuestionTimerEnabled ? int.tryParse(_perQuestionSecondsController.text) : null,
+          num.tryParse(_negativeMarksController.text) ??
+          widget.questionSet.defaultNegativeMarksPerWrong,
+      examTimerMinutes: _examTimerEnabled
+          ? int.tryParse(_examMinutesController.text)
+          : null,
+      perQuestionTimerSeconds: _perQuestionTimerEnabled
+          ? int.tryParse(_perQuestionSecondsController.text)
+          : null,
       shuffleQuestions: _shuffleQuestions,
       shuffleOptions: _shuffleOptions,
     );
 
-    ref.read(examSessionProvider.notifier).start(questions: filtered, config: config);
+    ref
+        .read(examSessionProvider.notifier)
+        .start(questions: filtered, config: config);
 
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (context) => ExamRunnerScreen(folder: widget.folder, questionSet: widget.questionSet),
+        builder: (context) => ExamRunnerScreen(
+          folder: widget.folder,
+          questionSet: widget.questionSet,
+        ),
       ),
     );
   }
@@ -146,8 +166,12 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final questionsAsync = ref.watch(questionsForSetProvider(widget.questionSet.id));
-    final answersAsync = ref.watch(answersForSetProvider(widget.questionSet.id));
+    final questionsAsync = ref.watch(
+      questionsForSetProvider(widget.questionSet.id),
+    );
+    final answersAsync = ref.watch(
+      answersForSetProvider(widget.questionSet.id),
+    );
 
     return FScaffold(
       header: FHeader.nested(
@@ -158,24 +182,37 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
             icon: const Icon(FIcons.chartLine),
             onPress: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => ProgressScreen(questionSet: widget.questionSet)),
+              MaterialPageRoute(
+                builder: (context) =>
+                    ProgressScreen(questionSet: widget.questionSet),
+              ),
             ),
           ),
         ],
       ),
-      child: questionsAsync.when(
-        loading: () => const Center(child: FCircularProgress()),
-        error: (err, stack) => Center(child: Text('Failed to load questions: $err')),
-        data: (questions) {
-          if (questions.isEmpty) {
-            return const Center(child: Text('This set has no questions.'));
-          }
-          return answersAsync.when(
-            loading: () => const Center(child: FCircularProgress()),
-            error: (err, stack) => Center(child: Text('Failed to load attempt history: $err')),
-            data: (answers) => _buildForm(questions, answers),
-          );
-        },
+      // top: false — the header already safe-areas itself against the status
+      // bar/notch; this keeps the "Start exam" button clear of the gesture bar.
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 12),
+        child: questionsAsync.when(
+          loading: () => const Center(child: FCircularProgress()),
+          error: (err, stack) =>
+              ErrorState(error: err, label: 'Failed to load questions'),
+          data: (questions) {
+            if (questions.isEmpty) {
+              return const Center(child: Text('This set has no questions.'));
+            }
+            return answersAsync.when(
+              loading: () => const Center(child: FCircularProgress()),
+              error: (err, stack) => ErrorState(
+                error: err,
+                label: 'Failed to load attempt history',
+              ),
+              data: (answers) => _buildForm(questions, answers),
+            );
+          },
+        ),
       ),
     );
   }
@@ -184,8 +221,12 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
     final wrongCount = QuestionPools.wrongPool(questions, answers).length;
     final skippedCount = QuestionPools.skippedPool(questions, answers).length;
 
-    final topics = questions.map((q) => q.topic).whereType<String>().toSet().toList()..sort();
-    final difficulties = questions.map((q) => q.difficulty).whereType<String>().toSet().toList()..sort();
+    final topics =
+        questions.map((q) => q.topic).whereType<String>().toSet().toList()
+          ..sort();
+    final difficulties =
+        questions.map((q) => q.difficulty).whereType<String>().toSet().toList()
+          ..sort();
 
     return ListView(
       children: [
@@ -213,19 +254,23 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
             FTile(
               title: Text('Full set (${questions.length})'),
               selected: _sourceType == AttemptSourceType.fullSet,
-              onPress: () => setState(() => _sourceType = AttemptSourceType.fullSet),
+              onPress: () =>
+                  setState(() => _sourceType = AttemptSourceType.fullSet),
             ),
             FTile(
               title: Text('Wrong answers ($wrongCount)'),
               enabled: wrongCount > 0,
               selected: _sourceType == AttemptSourceType.wrongAnswersRetry,
-              onPress: () => setState(() => _sourceType = AttemptSourceType.wrongAnswersRetry),
+              onPress: () => setState(
+                () => _sourceType = AttemptSourceType.wrongAnswersRetry,
+              ),
             ),
             FTile(
               title: Text('Skipped questions ($skippedCount)'),
               enabled: skippedCount > 0,
               selected: _sourceType == AttemptSourceType.skippedRetry,
-              onPress: () => setState(() => _sourceType = AttemptSourceType.skippedRetry),
+              onPress: () =>
+                  setState(() => _sourceType = AttemptSourceType.skippedRetry),
             ),
           ],
         ),
@@ -269,7 +314,10 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
           FSelect<String?>(
             label: const Text('Difficulty filter'),
             hint: 'All difficulties',
-            items: {'All difficulties': null, for (final d in difficulties) d: d},
+            items: {
+              'All difficulties': null,
+              for (final d in difficulties) d: d,
+            },
             control: FSelectControl.managed(
               initial: _difficultyFilter,
               onChange: (v) => setState(() => _difficultyFilter = v),
@@ -282,16 +330,24 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
             Expanded(
               child: FTextField(
                 label: const Text('Marks per correct'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                control: FTextFieldControl.managed(controller: _marksController),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                control: FTextFieldControl.managed(
+                  controller: _marksController,
+                ),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: FTextField(
                 label: const Text('Negative per wrong'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                control: FTextFieldControl.managed(controller: _negativeMarksController),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                control: FTextFieldControl.managed(
+                  controller: _negativeMarksController,
+                ),
               ),
             ),
           ],
@@ -306,7 +362,9 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
           FTextField(
             label: const Text('Total minutes'),
             keyboardType: TextInputType.number,
-            control: FTextFieldControl.managed(controller: _examMinutesController),
+            control: FTextFieldControl.managed(
+              controller: _examMinutesController,
+            ),
           ),
         const SizedBox(height: 12),
         FSwitch(
@@ -318,7 +376,9 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
           FTextField(
             label: const Text('Seconds per question'),
             keyboardType: TextInputType.number,
-            control: FTextFieldControl.managed(controller: _perQuestionSecondsController),
+            control: FTextFieldControl.managed(
+              controller: _perQuestionSecondsController,
+            ),
           ),
         const SizedBox(height: 12),
         FSwitch(

@@ -9,6 +9,7 @@ import '../../models/question.dart';
 import '../../models/question_set.dart';
 import '../../providers/exam_providers.dart';
 import '../../utils/progress_stats.dart';
+import '../../widgets/error_state.dart';
 
 class ProgressScreen extends ConsumerWidget {
   const ProgressScreen({super.key, required this.questionSet});
@@ -26,23 +27,35 @@ class ProgressScreen extends ConsumerWidget {
         title: Text('${questionSet.title} · Progress'),
         prefixes: [FHeaderAction.back(onPress: () => Navigator.pop(context))],
       ),
-      child: attemptsAsync.when(
-        loading: () => const Center(child: FCircularProgress()),
-        error: (err, stack) => Center(child: Text('Failed to load attempts: $err')),
-        data: (attempts) {
-          if (attempts.isEmpty) {
-            return const Center(child: Text('No attempts yet. Take an exam to start tracking progress.'));
-          }
-          return answersAsync.when(
-            loading: () => const Center(child: FCircularProgress()),
-            error: (err, stack) => Center(child: Text('Failed to load answers: $err')),
-            data: (answers) => questionsAsync.when(
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 12),
+        child: attemptsAsync.when(
+          loading: () => const Center(child: FCircularProgress()),
+          error: (err, stack) =>
+              ErrorState(error: err, label: 'Failed to load attempts'),
+          data: (attempts) {
+            if (attempts.isEmpty) {
+              return const Center(
+                child: Text(
+                  'No attempts yet. Take an exam to start tracking progress.',
+                ),
+              );
+            }
+            return answersAsync.when(
               loading: () => const Center(child: FCircularProgress()),
-              error: (err, stack) => Center(child: Text('Failed to load questions: $err')),
-              data: (questions) => _buildBody(context, attempts, answers, questions),
-            ),
-          );
-        },
+              error: (err, stack) =>
+                  ErrorState(error: err, label: 'Failed to load answers'),
+              data: (answers) => questionsAsync.when(
+                loading: () => const Center(child: FCircularProgress()),
+                error: (err, stack) =>
+                    ErrorState(error: err, label: 'Failed to load questions'),
+                data: (questions) =>
+                    _buildBody(context, attempts, answers, questions),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -56,7 +69,11 @@ class ProgressScreen extends ConsumerWidget {
     final questionById = {for (final q in questions) q.id: q};
     final attemptById = {for (final a in attempts) a.id: a};
     final trend = ProgressStats.accuracyTrend(attempts);
-    final topicAccuracy = ProgressStats.topicAccuracy(answers, attemptById, questionById);
+    final topicAccuracy = ProgressStats.topicAccuracy(
+      answers,
+      attemptById,
+      questionById,
+    );
     final weakSpots = ProgressStats.weakSpots(answers, questionById);
     final streak = ProgressStats.streak(attempts);
 
@@ -64,11 +81,23 @@ class ProgressScreen extends ConsumerWidget {
       children: [
         Row(
           children: [
-            Expanded(child: FBadge(child: Text('${streak.currentStreak}-day streak'))),
+            Expanded(
+              child: FBadge(child: Text('${streak.currentStreak}-day streak')),
+            ),
             const SizedBox(width: 8),
-            Expanded(child: FBadge(variant: FBadgeVariant.secondary, child: Text('${streak.daysPracticed} days practiced'))),
+            Expanded(
+              child: FBadge(
+                variant: FBadgeVariant.secondary,
+                child: Text('${streak.daysPracticed} days practiced'),
+              ),
+            ),
             const SizedBox(width: 8),
-            Expanded(child: FBadge(variant: FBadgeVariant.secondary, child: Text('${attempts.length} attempts'))),
+            Expanded(
+              child: FBadge(
+                variant: FBadgeVariant.secondary,
+                child: Text('${attempts.length} attempts'),
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 20),
@@ -84,15 +113,26 @@ class ProgressScreen extends ConsumerWidget {
                 minY: 0,
                 maxY: 100,
                 titlesData: const FlTitlesData(
-                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 32)),
+                  topTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: true, reservedSize: 32),
+                  ),
                 ),
                 lineBarsData: [
                   LineChartBarData(
                     isCurved: true,
-                    spots: [for (var i = 0; i < trend.length; i++) FlSpot(i.toDouble(), trend[i])],
+                    spots: [
+                      for (var i = 0; i < trend.length; i++)
+                        FlSpot(i.toDouble(), trend[i]),
+                    ],
                     dotData: const FlDotData(show: true),
                   ),
                 ],
@@ -109,7 +149,9 @@ class ProgressScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('${t.topic} · ${(t.accuracy * 100).round()}% (${t.correct}/${t.total})'),
+                  Text(
+                    '${t.topic} · ${(t.accuracy * 100).round()}% (${t.correct}/${t.total})',
+                  ),
                   const SizedBox(height: 4),
                   FDeterminateProgress(value: t.accuracy),
                 ],
@@ -124,8 +166,14 @@ class ProgressScreen extends ConsumerWidget {
             children: [
               for (final w in weakSpots)
                 FTile(
-                  title: Text(w.question.questionText, maxLines: 2, overflow: TextOverflow.ellipsis),
-                  subtitle: Text('Wrong ${(w.wrongRate * 100).round()}% of ${w.total} attempts'),
+                  title: Text(
+                    w.question.questionText,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    'Wrong ${(w.wrongRate * 100).round()}% of ${w.total} attempts',
+                  ),
                 ),
             ],
           ),
@@ -138,7 +186,9 @@ class ProgressScreen extends ConsumerWidget {
             for (final a in attempts)
               FTile(
                 title: Text('${a.startedAt.toLocal()}'.split('.').first),
-                subtitle: Text('${a.sourceType.value} · ${a.mode.value} · score ${a.totalScore ?? 0}'),
+                subtitle: Text(
+                  '${a.sourceType.value} · ${a.mode.value} · score ${a.totalScore ?? 0}',
+                ),
                 details: Text('${a.durationSeconds ?? 0}s'),
               ),
           ],

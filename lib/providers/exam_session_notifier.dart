@@ -23,7 +23,9 @@ class ExamSessionNotifier extends StateNotifier<ExamSessionState?> {
   DateTime _currentQuestionEnteredAt = DateTime.now();
 
   void start({required List<Question> questions, required ExamConfig config}) {
-    final ordered = config.shuffleQuestions ? (List.of(questions)..shuffle()) : questions;
+    final ordered = config.shuffleQuestions
+        ? (List.of(questions)..shuffle())
+        : questions;
     final now = DateTime.now();
     final runnerQuestions = [
       for (final q in ordered)
@@ -41,8 +43,9 @@ class ExamSessionNotifier extends StateNotifier<ExamSessionState?> {
       questions: runnerQuestions,
       currentIndex: 0,
       startedAt: now,
-      examEndTime:
-          config.examTimerMinutes != null ? now.add(Duration(minutes: config.examTimerMinutes!)) : null,
+      examEndTime: config.examTimerMinutes != null
+          ? now.add(Duration(minutes: config.examTimerMinutes!))
+          : null,
       questionEndTime: config.perQuestionTimerSeconds != null
           ? now.add(Duration(seconds: config.perQuestionTimerSeconds!))
           : null,
@@ -53,7 +56,9 @@ class ExamSessionNotifier extends StateNotifier<ExamSessionState?> {
   void _startTicker() {
     _ticker?.cancel();
     final s = state;
-    if (s == null || (s.config.examTimerMinutes == null && s.config.perQuestionTimerSeconds == null)) {
+    if (s == null ||
+        (s.config.examTimerMinutes == null &&
+            s.config.perQuestionTimerSeconds == null)) {
       return;
     }
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
@@ -97,7 +102,9 @@ class ExamSessionNotifier extends StateNotifier<ExamSessionState?> {
     final s = state;
     if (s == null || s.submitted) return;
     final updated = [...s.questions];
-    updated[s.currentIndex] = updated[s.currentIndex].copyWith(selectedOriginalIndex: originalIndex);
+    updated[s.currentIndex] = updated[s.currentIndex].copyWith(
+      selectedOriginalIndex: originalIndex,
+    );
     state = s.copyWith(questions: updated);
   }
 
@@ -112,7 +119,9 @@ class ExamSessionNotifier extends StateNotifier<ExamSessionState?> {
     state = afterRecord.copyWith(
       currentIndex: afterRecord.currentIndex - 1,
       questionEndTime: afterRecord.config.perQuestionTimerSeconds != null
-          ? DateTime.now().add(Duration(seconds: afterRecord.config.perQuestionTimerSeconds!))
+          ? DateTime.now().add(
+              Duration(seconds: afterRecord.config.perQuestionTimerSeconds!),
+            )
           : null,
       clearQuestionEndTime: afterRecord.config.perQuestionTimerSeconds == null,
     );
@@ -133,16 +142,22 @@ class ExamSessionNotifier extends StateNotifier<ExamSessionState?> {
     state = afterRecord.copyWith(
       currentIndex: afterRecord.currentIndex + 1,
       questionEndTime: afterRecord.config.perQuestionTimerSeconds != null
-          ? DateTime.now().add(Duration(seconds: afterRecord.config.perQuestionTimerSeconds!))
+          ? DateTime.now().add(
+              Duration(seconds: afterRecord.config.perQuestionTimerSeconds!),
+            )
           : null,
       clearQuestionEndTime: afterRecord.config.perQuestionTimerSeconds == null,
     );
   }
 
   void _recordTimeTaken(ExamSessionState s) {
-    final elapsed = DateTime.now().difference(_currentQuestionEnteredAt).inSeconds;
+    final elapsed = DateTime.now()
+        .difference(_currentQuestionEnteredAt)
+        .inSeconds;
     final updated = [...s.questions];
-    updated[s.currentIndex] = updated[s.currentIndex].copyWith(timeTakenSeconds: elapsed);
+    updated[s.currentIndex] = updated[s.currentIndex].copyWith(
+      timeTakenSeconds: elapsed,
+    );
     state = s.copyWith(questions: updated);
   }
 
@@ -169,6 +184,7 @@ class ExamSessionNotifier extends StateNotifier<ExamSessionState?> {
 // reset the session to null before the runner screen ever saw it (visible
 // as a stuck loading spinner). Kept alive for the app's lifetime instead;
 // each new exam just overwrites the state via `start()`.
-final examSessionProvider = StateNotifierProvider<ExamSessionNotifier, ExamSessionState?>(
-  (ref) => ExamSessionNotifier(),
-);
+final examSessionProvider =
+    StateNotifierProvider<ExamSessionNotifier, ExamSessionState?>(
+      (ref) => ExamSessionNotifier(),
+    );

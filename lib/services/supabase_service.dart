@@ -66,20 +66,24 @@ class SupabaseService {
     final questionSet = QuestionSet.fromMap(setRow);
 
     try {
-      await _client.from('questions').insert(
+      await _client
+          .from('questions')
+          .insert(
             questions
-                .map((q) => Question(
-                      id: q.id,
-                      questionSetId: questionSet.id,
-                      sourceId: q.sourceId,
-                      questionText: q.questionText,
-                      options: q.options,
-                      correctAnswer: q.correctAnswer,
-                      explanation: q.explanation,
-                      topic: q.topic,
-                      difficulty: q.difficulty,
-                      createdAt: q.createdAt,
-                    ).toInsertMap())
+                .map(
+                  (q) => Question(
+                    id: q.id,
+                    questionSetId: questionSet.id,
+                    sourceId: q.sourceId,
+                    questionText: q.questionText,
+                    options: q.options,
+                    correctAnswer: q.correctAnswer,
+                    explanation: q.explanation,
+                    topic: q.topic,
+                    difficulty: q.difficulty,
+                    createdAt: q.createdAt,
+                  ).toInsertMap(),
+                )
                 .toList(),
           );
     } catch (_) {
@@ -119,11 +123,15 @@ class SupabaseService {
   /// attempt is stored as plain insert payloads (not [Attempt]/[AttemptAnswer]
   /// instances) since it's serialized to disk while offline and replayed
   /// later, possibly across app restarts.
-  Future<Map<String, dynamic>> insertAttemptRaw(Map<String, dynamic> insertMap) async {
+  Future<Map<String, dynamic>> insertAttemptRaw(
+    Map<String, dynamic> insertMap,
+  ) async {
     return _client.from('attempts').insert(insertMap).select().single();
   }
 
-  Future<void> insertAttemptAnswersRaw(List<Map<String, dynamic>> insertMaps) async {
+  Future<void> insertAttemptAnswersRaw(
+    List<Map<String, dynamic>> insertMaps,
+  ) async {
     await _client.from('attempt_answers').insert(insertMaps);
   }
 
@@ -140,7 +148,9 @@ class SupabaseService {
 
   /// Most recent attempt_answer per question, across attempts of this set,
   /// used to derive the current wrong-answer and skipped pools client-side.
-  Future<List<AttemptAnswer>> fetchAllAnswersForSet(String questionSetId) async {
+  Future<List<AttemptAnswer>> fetchAllAnswersForSet(
+    String questionSetId,
+  ) async {
     final rows = await _client
         .from('attempt_answers')
         .select('*, attempts!inner(question_set_id)')

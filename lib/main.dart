@@ -1,14 +1,17 @@
 import 'dart:async' show unawaited;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'providers/theme_provider.dart';
 import 'screens/folders/folder_list_screen.dart';
 import 'services/supabase_service.dart';
 import 'services/sync_service.dart';
@@ -43,19 +46,49 @@ Future<void> main() async {
     }
   });
 
-  runApp(const ProviderScope(child: McqApp()));
+  final prefs = await SharedPreferences.getInstance();
+  final initialThemeMode = loadInitialThemeMode(prefs);
+
+  runApp(
+    ProviderScope(
+      overrides: [
+        themeModeProvider.overrideWith(
+          (ref) => ThemeModeNotifier(prefs, initialThemeMode),
+        ),
+      ],
+      child: const McqApp(),
+    ),
+  );
 }
 
-class McqApp extends StatelessWidget {
+class McqApp extends ConsumerWidget {
   const McqApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final theme = FThemes.zinc.light.touch;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+    final lightTheme = FThemes.zinc.light.touch;
+    final darkTheme = FThemes.zinc.dark.touch;
+
     return MaterialApp(
       title: 'MCQ Practice',
-      theme: theme.toApproximateMaterialTheme(),
-      builder: (context, child) => FTheme(data: theme, child: FToaster(child: child!)),
+      themeMode: themeMode,
+      theme: lightTheme.toApproximateMaterialTheme(),
+      darkTheme: darkTheme.toApproximateMaterialTheme(),
+      builder: (context, child) {
+        final resolvedBrightness = switch (themeMode) {
+          ThemeMode.light => Brightness.light,
+          ThemeMode.dark => Brightness.dark,
+          ThemeMode.system => MediaQuery.platformBrightnessOf(context),
+        };
+        final fTheme = resolvedBrightness == Brightness.dark
+            ? darkTheme
+            : lightTheme;
+        return FTheme(
+          data: fTheme,
+          child: FToaster(child: child!),
+        );
+      },
       home: const FolderListScreen(),
     );
   }

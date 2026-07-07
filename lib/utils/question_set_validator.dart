@@ -46,17 +46,21 @@ class QuestionSetValidator {
     final valid = <Question>[];
 
     if (examTitle == null || examTitle.trim().isEmpty) {
-      errors.add(const QuestionValidationError(
-        index: -1,
-        message: 'Missing required field "exam_title" at top level.',
-      ));
+      errors.add(
+        const QuestionValidationError(
+          index: -1,
+          message: 'Missing required field "exam_title" at top level.',
+        ),
+      );
     }
 
     if (rawQuestions is! List || rawQuestions.isEmpty) {
-      errors.add(const QuestionValidationError(
-        index: -1,
-        message: 'Missing or empty "questions" array.',
-      ));
+      errors.add(
+        const QuestionValidationError(
+          index: -1,
+          message: 'Missing or empty "questions" array.',
+        ),
+      );
       return QuestionSetValidationResult(
         examTitle: examTitle,
         subject: subject,
@@ -70,10 +74,12 @@ class QuestionSetValidator {
     for (var i = 0; i < rawQuestions.length; i++) {
       final raw = rawQuestions[i];
       if (raw is! Map<String, dynamic>) {
-        errors.add(QuestionValidationError(
-          index: i,
-          message: 'Question is not a JSON object.',
-        ));
+        errors.add(
+          QuestionValidationError(
+            index: i,
+            message: 'Question is not a JSON object.',
+          ),
+        );
         continue;
       }
 
@@ -87,7 +93,9 @@ class QuestionSetValidator {
 
       final options = raw['options'];
       if (options is! List || options.length < 2) {
-        questionMessages.add('"options" must be a list with at least 2 entries.');
+        questionMessages.add(
+          '"options" must be a list with at least 2 entries.',
+        );
       }
 
       final correctAnswerRaw = raw['correct_answer'];
@@ -115,11 +123,13 @@ class QuestionSetValidator {
       }
 
       if (questionMessages.isNotEmpty) {
-        errors.add(QuestionValidationError(
-          index: i,
-          sourceId: sourceId,
-          message: questionMessages.join(' '),
-        ));
+        errors.add(
+          QuestionValidationError(
+            index: i,
+            sourceId: sourceId,
+            message: questionMessages.join(' '),
+          ),
+        );
         continue;
       }
 

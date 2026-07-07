@@ -32,67 +32,86 @@ class ResultsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final duration = session.questions.fold<int>(0, (sum, q) => sum + (q.timeTakenSeconds ?? 0));
+    final duration = session.questions.fold<int>(
+      0,
+      (sum, q) => sum + (q.timeTakenSeconds ?? 0),
+    );
 
     return FScaffold(
       header: FHeader.nested(
         title: const Text('Results'),
         prefixes: [FHeaderAction.back(onPress: () => Navigator.pop(context))],
       ),
-      child: ListView(
-        children: [
-          if (savedAttempt == null)
-            FAlert(
-              variant: queuedForSync ? FAlertVariant.primary : FAlertVariant.destructive,
-              title: Text(queuedForSync ? 'Saved locally' : 'Not saved'),
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 12),
+        child: ListView(
+          children: [
+            if (savedAttempt == null)
+              FAlert(
+                variant: queuedForSync
+                    ? FAlertVariant.primary
+                    : FAlertVariant.destructive,
+                title: Text(queuedForSync ? 'Saved locally' : 'Not saved'),
+                subtitle: Text(
+                  queuedForSync
+                      ? "You're offline — this attempt will sync automatically once you're back online."
+                      : 'This attempt could not be uploaded. Your score below is accurate but won\'t appear in history.',
+                ),
+              ),
+            const SizedBox(height: 12),
+            FCard(
+              title: Text(questionSet.title),
               subtitle: Text(
-                queuedForSync
-                    ? "You're offline — this attempt will sync automatically once you're back online."
-                    : 'This attempt could not be uploaded. Your score below is accurate but won\'t appear in history.',
+                '${session.config.mode.name} · ${session.questions.length} questions',
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Score: ${session.totalScore}'),
+                  Text(
+                    'Correct: ${session.correctCount}  Wrong: ${session.wrongCount}  Skipped: ${session.skippedCount}',
+                  ),
+                  Text('Time taken: ${duration ~/ 60}m ${duration % 60}s'),
+                ],
               ),
             ),
-          const SizedBox(height: 12),
-          FCard(
-            title: Text(questionSet.title),
-            subtitle: Text('${session.config.mode.name} · ${session.questions.length} questions'),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Score: ${session.totalScore}'),
-                Text('Correct: ${session.correctCount}  Wrong: ${session.wrongCount}  Skipped: ${session.skippedCount}'),
-                Text('Time taken: ${duration ~/ 60}m ${duration % 60}s'),
-              ],
-            ),
-          ),
-          if (session.wrongCount > 0 || session.skippedCount > 0) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                if (session.wrongCount > 0)
-                  Expanded(
-                    child: FButton(
-                      variant: FButtonVariant.outline,
-                      prefix: const Icon(FIcons.rotateCcw),
-                      onPress: () => _retry(context, AttemptSourceType.wrongAnswersRetry),
-                      child: const Text('Retry wrong'),
+            if (session.wrongCount > 0 || session.skippedCount > 0) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  if (session.wrongCount > 0)
+                    Expanded(
+                      child: FButton(
+                        variant: FButtonVariant.outline,
+                        prefix: const Icon(FIcons.rotateCcw),
+                        onPress: () => _retry(
+                          context,
+                          AttemptSourceType.wrongAnswersRetry,
+                        ),
+                        child: const Text('Retry wrong'),
+                      ),
                     ),
-                  ),
-                if (session.wrongCount > 0 && session.skippedCount > 0) const SizedBox(width: 12),
-                if (session.skippedCount > 0)
-                  Expanded(
-                    child: FButton(
-                      variant: FButtonVariant.outline,
-                      prefix: const Icon(FIcons.rotateCcw),
-                      onPress: () => _retry(context, AttemptSourceType.skippedRetry),
-                      child: const Text('Retry skipped'),
+                  if (session.wrongCount > 0 && session.skippedCount > 0)
+                    const SizedBox(width: 12),
+                  if (session.skippedCount > 0)
+                    Expanded(
+                      child: FButton(
+                        variant: FButtonVariant.outline,
+                        prefix: const Icon(FIcons.rotateCcw),
+                        onPress: () =>
+                            _retry(context, AttemptSourceType.skippedRetry),
+                        child: const Text('Retry skipped'),
+                      ),
                     ),
-                  ),
-              ],
-            ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 16),
+            for (var i = 0; i < session.questions.length; i++)
+              _buildQuestionCard(i, session.questions[i]),
           ],
-          const SizedBox(height: 16),
-          for (var i = 0; i < session.questions.length; i++) _buildQuestionCard(i, session.questions[i]),
-        ],
+        ),
       ),
     );
   }
@@ -119,10 +138,14 @@ class ResultsScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              !rq.isAnswered ? 'Skipped' : 'Your answer: ${rq.question.options[rq.selectedOriginalIndex!]}',
+              !rq.isAnswered
+                  ? 'Skipped'
+                  : 'Your answer: ${rq.question.options[rq.selectedOriginalIndex!]}',
             ),
             if (rq.isAnswered && !rq.isCorrect)
-              Text('Correct answer: ${rq.question.options[rq.question.correctAnswer]}'),
+              Text(
+                'Correct answer: ${rq.question.options[rq.question.correctAnswer]}',
+              ),
             if (rq.question.explanation != null) ...[
               const SizedBox(height: 4),
               Text(rq.question.explanation!),

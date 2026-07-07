@@ -47,15 +47,22 @@ class LocalDb {
   }
 
   static Map<String, dynamic> _questionToCacheMap(Question q) => {
-        'id': q.id,
-        'created_at': q.createdAt.toIso8601String(),
-        ...q.toInsertMap(),
-      };
+    'id': q.id,
+    'created_at': q.createdAt.toIso8601String(),
+    ...q.toInsertMap(),
+  };
 
-  static Future<void> cacheQuestions(String questionSetId, List<Question> questions) async {
+  static Future<void> cacheQuestions(
+    String questionSetId,
+    List<Question> questions,
+  ) async {
     final db = await _open();
     final batch = db.batch();
-    batch.delete('cached_questions', where: 'question_set_id = ?', whereArgs: [questionSetId]);
+    batch.delete(
+      'cached_questions',
+      where: 'question_set_id = ?',
+      whereArgs: [questionSetId],
+    );
     for (final q in questions) {
       batch.insert('cached_questions', {
         'question_set_id': questionSetId,
@@ -74,7 +81,11 @@ class LocalDb {
       whereArgs: [questionSetId],
     );
     return rows
-        .map((row) => Question.fromMap(jsonDecode(row['data'] as String) as Map<String, dynamic>))
+        .map(
+          (row) => Question.fromMap(
+            jsonDecode(row['data'] as String) as Map<String, dynamic>,
+          ),
+        )
         .toList();
   }
 
@@ -101,6 +112,10 @@ class LocalDb {
 
   static Future<void> removePendingAttempt(int localId) async {
     final db = await _open();
-    await db.delete('pending_attempts', where: 'local_id = ?', whereArgs: [localId]);
+    await db.delete(
+      'pending_attempts',
+      where: 'local_id = ?',
+      whereArgs: [localId],
+    );
   }
 }

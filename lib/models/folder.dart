@@ -21,9 +21,6 @@ class Folder {
   }
 
   Map<String, dynamic> toInsertMap() {
-    return {
-      'name': name,
-      if (parentId != null) 'parent_id': parentId,
-    };
+    return {'name': name, if (parentId != null) 'parent_id': parentId};
   }
 }

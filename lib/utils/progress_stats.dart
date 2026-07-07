@@ -7,7 +7,11 @@ class TopicAccuracy {
   final int correct;
   final int wrong;
 
-  const TopicAccuracy({required this.topic, required this.correct, required this.wrong});
+  const TopicAccuracy({
+    required this.topic,
+    required this.correct,
+    required this.wrong,
+  });
 
   int get total => correct + wrong;
   double get accuracy => total == 0 ? 0 : correct / total;
@@ -18,7 +22,11 @@ class WeakSpot {
   final int correct;
   final int wrong;
 
-  const WeakSpot({required this.question, required this.correct, required this.wrong});
+  const WeakSpot({
+    required this.question,
+    required this.correct,
+    required this.wrong,
+  });
 
   int get total => correct + wrong;
   double get wrongRate => total == 0 ? 0 : wrong / total;
@@ -39,8 +47,9 @@ class ProgressStats {
   /// (`wrong_answers_retry`/`skipped_retry`) is excluded so it doesn't
   /// artificially inflate "improvement" stats.
   static List<Attempt> trendAttempts(List<Attempt> attempts) {
-    final eligible = attempts.where((a) => a.sourceType.countsTowardTrendCharts).toList()
-      ..sort((a, b) => a.startedAt.compareTo(b.startedAt));
+    final eligible =
+        attempts.where((a) => a.sourceType.countsTowardTrendCharts).toList()
+          ..sort((a, b) => a.startedAt.compareTo(b.startedAt));
     return eligible;
   }
 
@@ -63,7 +72,9 @@ class ProgressStats {
     for (final answer in answers) {
       if (answer.status == AnswerStatus.skipped) continue;
       final attempt = attemptById[answer.attemptId];
-      if (attempt == null || !attempt.sourceType.countsTowardTrendCharts) continue;
+      if (attempt == null || !attempt.sourceType.countsTowardTrendCharts) {
+        continue;
+      }
       final topic = questionById[answer.questionId]?.topic;
       if (topic == null) continue;
 
@@ -75,7 +86,8 @@ class ProgressStats {
         wrong: (existing?.wrong ?? 0) + (isCorrect ? 0 : 1),
       );
     }
-    final result = byTopic.values.toList()..sort((a, b) => a.accuracy.compareTo(b.accuracy));
+    final result = byTopic.values.toList()
+      ..sort((a, b) => a.accuracy.compareTo(b.accuracy));
     return result;
   }
 
@@ -104,10 +116,11 @@ class ProgressStats {
         wrong: (existing?.wrong ?? 0) + (isCorrect ? 0 : 1),
       );
     }
-    final result = byQuestion.values
-        .where((w) => w.total >= minAttempts && w.wrongRate >= threshold)
-        .toList()
-      ..sort((a, b) => b.wrongRate.compareTo(a.wrongRate));
+    final result =
+        byQuestion.values
+            .where((w) => w.total >= minAttempts && w.wrongRate >= threshold)
+            .toList()
+          ..sort((a, b) => b.wrongRate.compareTo(a.wrongRate));
     return result;
   }
 
@@ -120,11 +133,15 @@ class ProgressStats {
       return DateTime(d.year, d.month, d.day);
     }).toSet();
 
-    if (days.isEmpty) return const StreakInfo(daysPracticed: 0, currentStreak: 0);
+    if (days.isEmpty) {
+      return const StreakInfo(daysPracticed: 0, currentStreak: 0);
+    }
 
     final today = DateTime.now();
     final todayDate = DateTime(today.year, today.month, today.day);
-    var cursor = days.contains(todayDate) ? todayDate : todayDate.subtract(const Duration(days: 1));
+    var cursor = days.contains(todayDate)
+        ? todayDate
+        : todayDate.subtract(const Duration(days: 1));
 
     var streak = 0;
     while (days.contains(cursor)) {

@@ -4,19 +4,19 @@ enum AttemptMode { practice, test }
 
 extension AttemptSourceTypeX on AttemptSourceType {
   String get value => switch (this) {
-        AttemptSourceType.fullSet => 'full_set',
-        AttemptSourceType.wrongAnswersRetry => 'wrong_answers_retry',
-        AttemptSourceType.skippedRetry => 'skipped_retry',
-        AttemptSourceType.custom => 'custom',
-      };
+    AttemptSourceType.fullSet => 'full_set',
+    AttemptSourceType.wrongAnswersRetry => 'wrong_answers_retry',
+    AttemptSourceType.skippedRetry => 'skipped_retry',
+    AttemptSourceType.custom => 'custom',
+  };
 
   static AttemptSourceType fromValue(String value) => switch (value) {
-        'full_set' => AttemptSourceType.fullSet,
-        'wrong_answers_retry' => AttemptSourceType.wrongAnswersRetry,
-        'skipped_retry' => AttemptSourceType.skippedRetry,
-        'custom' => AttemptSourceType.custom,
-        _ => throw ArgumentError('Unknown source_type: $value'),
-      };
+    'full_set' => AttemptSourceType.fullSet,
+    'wrong_answers_retry' => AttemptSourceType.wrongAnswersRetry,
+    'skipped_retry' => AttemptSourceType.skippedRetry,
+    'custom' => AttemptSourceType.custom,
+    _ => throw ArgumentError('Unknown source_type: $value'),
+  };
 
   /// Attempts whose source is excluded from the main accuracy/progress-trend
   /// analytics per docs/PRD.md section 9 (retry drilling shouldn't inflate
@@ -27,15 +27,15 @@ extension AttemptSourceTypeX on AttemptSourceType {
 
 extension AttemptModeX on AttemptMode {
   String get value => switch (this) {
-        AttemptMode.practice => 'practice',
-        AttemptMode.test => 'test',
-      };
+    AttemptMode.practice => 'practice',
+    AttemptMode.test => 'test',
+  };
 
   static AttemptMode fromValue(String value) => switch (value) {
-        'practice' => AttemptMode.practice,
-        'test' => AttemptMode.test,
-        _ => throw ArgumentError('Unknown mode: $value'),
-      };
+    'practice' => AttemptMode.practice,
+    'test' => AttemptMode.test,
+    _ => throw ArgumentError('Unknown mode: $value'),
+  };
 }
 
 class Attempt {

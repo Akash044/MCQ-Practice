@@ -8,7 +8,9 @@ import '../models/question.dart';
 class QuestionPools {
   static const defaultMasteryStreak = 2;
 
-  static Map<String, List<AttemptAnswer>> _byQuestion(List<AttemptAnswer> answers) {
+  static Map<String, List<AttemptAnswer>> _byQuestion(
+    List<AttemptAnswer> answers,
+  ) {
     final map = <String, List<AttemptAnswer>>{};
     for (final a in answers) {
       map.putIfAbsent(a.questionId, () => []).add(a);
@@ -22,10 +24,15 @@ class QuestionPools {
     List<AttemptAnswer> answersForQuestion, {
     int masteryStreak = defaultMasteryStreak,
   }) {
-    final nonSkipped = answersForQuestion.where((a) => a.status != AnswerStatus.skipped).toList()
-      ..sort((a, b) => a.answeredAt.compareTo(b.answeredAt));
+    final nonSkipped =
+        answersForQuestion
+            .where((a) => a.status != AnswerStatus.skipped)
+            .toList()
+          ..sort((a, b) => a.answeredAt.compareTo(b.answeredAt));
     if (nonSkipped.length < masteryStreak) return false;
-    return nonSkipped.reversed.take(masteryStreak).every((a) => a.status == AnswerStatus.correct);
+    return nonSkipped.reversed
+        .take(masteryStreak)
+        .every((a) => a.status == AnswerStatus.correct);
   }
 
   /// Questions whose most recent non-skipped answer is incorrect and not yet
@@ -39,8 +46,9 @@ class QuestionPools {
     return questions.where((q) {
       final answers = byQuestion[q.id];
       if (answers == null || answers.isEmpty) return false;
-      final nonSkipped = answers.where((a) => a.status != AnswerStatus.skipped).toList()
-        ..sort((a, b) => a.answeredAt.compareTo(b.answeredAt));
+      final nonSkipped =
+          answers.where((a) => a.status != AnswerStatus.skipped).toList()
+            ..sort((a, b) => a.answeredAt.compareTo(b.answeredAt));
       if (nonSkipped.isEmpty) return false;
       return nonSkipped.last.status == AnswerStatus.incorrect &&
           !isMastered(answers, masteryStreak: masteryStreak);
@@ -48,12 +56,16 @@ class QuestionPools {
   }
 
   /// Questions whose most recent answer (of any status) was a skip.
-  static List<Question> skippedPool(List<Question> questions, List<AttemptAnswer> allAnswers) {
+  static List<Question> skippedPool(
+    List<Question> questions,
+    List<AttemptAnswer> allAnswers,
+  ) {
     final byQuestion = _byQuestion(allAnswers);
     return questions.where((q) {
       final answers = byQuestion[q.id];
       if (answers == null || answers.isEmpty) return false;
-      final sorted = [...answers]..sort((a, b) => a.answeredAt.compareTo(b.answeredAt));
+      final sorted = [...answers]
+        ..sort((a, b) => a.answeredAt.compareTo(b.answeredAt));
       return sorted.last.status == AnswerStatus.skipped;
     }).toList();
   }

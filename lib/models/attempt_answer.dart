@@ -2,17 +2,17 @@ enum AnswerStatus { correct, incorrect, skipped }
 
 extension AnswerStatusX on AnswerStatus {
   String get value => switch (this) {
-        AnswerStatus.correct => 'correct',
-        AnswerStatus.incorrect => 'incorrect',
-        AnswerStatus.skipped => 'skipped',
-      };
+    AnswerStatus.correct => 'correct',
+    AnswerStatus.incorrect => 'incorrect',
+    AnswerStatus.skipped => 'skipped',
+  };
 
   static AnswerStatus fromValue(String value) => switch (value) {
-        'correct' => AnswerStatus.correct,
-        'incorrect' => AnswerStatus.incorrect,
-        'skipped' => AnswerStatus.skipped,
-        _ => throw ArgumentError('Unknown status: $value'),
-      };
+    'correct' => AnswerStatus.correct,
+    'incorrect' => AnswerStatus.incorrect,
+    'skipped' => AnswerStatus.skipped,
+    _ => throw ArgumentError('Unknown status: $value'),
+  };
 }
 
 class AttemptAnswer {

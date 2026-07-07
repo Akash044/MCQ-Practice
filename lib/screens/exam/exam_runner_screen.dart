@@ -13,15 +13,24 @@ import '../../providers/supabase_providers.dart';
 import '../../services/local_db.dart';
 import '../results/results_screen.dart';
 
+const _correctColor = Color(0xFF16A34A);
+const _incorrectColor = Color(0xFFDC2626);
+
 String _formatDuration(Duration d) {
   final clamped = d.isNegative ? Duration.zero : d;
   final minutes = clamped.inMinutes.remainder(60).toString().padLeft(2, '0');
   final seconds = clamped.inSeconds.remainder(60).toString().padLeft(2, '0');
-  return clamped.inHours > 0 ? '${clamped.inHours}:$minutes:$seconds' : '$minutes:$seconds';
+  return clamped.inHours > 0
+      ? '${clamped.inHours}:$minutes:$seconds'
+      : '$minutes:$seconds';
 }
 
 class ExamRunnerScreen extends ConsumerStatefulWidget {
-  const ExamRunnerScreen({super.key, required this.folder, required this.questionSet});
+  const ExamRunnerScreen({
+    super.key,
+    required this.folder,
+    required this.questionSet,
+  });
 
   final Folder folder;
   final QuestionSet questionSet;
@@ -30,7 +39,8 @@ class ExamRunnerScreen extends ConsumerStatefulWidget {
   ConsumerState<ExamRunnerScreen> createState() => _ExamRunnerScreenState();
 }
 
-class _ExamRunnerScreenState extends ConsumerState<ExamRunnerScreen> with WidgetsBindingObserver {
+class _ExamRunnerScreenState extends ConsumerState<ExamRunnerScreen>
+    with WidgetsBindingObserver {
   bool _finishing = false;
 
   @override
@@ -73,15 +83,47 @@ class _ExamRunnerScreenState extends ConsumerState<ExamRunnerScreen> with Widget
     return leave ?? false;
   }
 
+  Future<void> _confirmSubmitEarly(ExamSessionState session) async {
+    final answered = session.correctCount + session.wrongCount;
+    final remaining = session.questions.length - answered;
+    final submit = await showFDialog<bool>(
+      context: context,
+      builder: (context, style, animation) => FDialog(
+        title: const Text('Submit exam now?'),
+        body: Text(
+          '$answered of ${session.questions.length} questions answered. '
+          '$remaining question${remaining == 1 ? '' : 's'} will be marked skipped. '
+          "This can't be undone.",
+        ),
+        actions: [
+          FButton(
+            variant: FButtonVariant.outline,
+            onPress: () => Navigator.pop(context, false),
+            child: const Text('Keep going'),
+          ),
+          FButton(
+            onPress: () => Navigator.pop(context, true),
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+    if (submit ?? false) {
+      ref.read(examSessionProvider.notifier).submit();
+    }
+  }
+
   Map<String, dynamic> _answerInsertMap(RunnerQuestion rq) {
     final status = !rq.isAnswered
         ? AnswerStatus.skipped
         : (rq.isCorrect ? AnswerStatus.correct : AnswerStatus.incorrect);
     return {
       'question_id': rq.question.id,
-      if (rq.selectedOriginalIndex != null) 'selected_answer': rq.selectedOriginalIndex,
+      if (rq.selectedOriginalIndex != null)
+        'selected_answer': rq.selectedOriginalIndex,
       'status': status.value,
-      if (rq.timeTakenSeconds != null) 'time_taken_seconds': rq.timeTakenSeconds,
+      if (rq.timeTakenSeconds != null)
+        'time_taken_seconds': rq.timeTakenSeconds,
     };
   }
 
@@ -108,7 +150,9 @@ class _ExamRunnerScreenState extends ConsumerState<ExamRunnerScreen> with Widget
       completedAt: DateTime.now(),
       durationSeconds: DateTime.now().difference(session.startedAt).inSeconds,
     ).toInsertMap();
-    final answerInsertMaps = [for (final rq in session.questions) _answerInsertMap(rq)];
+    final answerInsertMaps = [
+      for (final rq in session.questions) _answerInsertMap(rq),
+    ];
 
     Attempt? saved;
     var queued = false;
@@ -155,6 +199,50 @@ class _ExamRunnerScreenState extends ConsumerState<ExamRunnerScreen> with Widget
     );
   }
 
+  FTile _buildOption(
+    ExamSessionState session,
+    RunnerQuestion current,
+    ExamSessionNotifier notifier,
+    int originalIndex,
+  ) {
+    final revealed =
+        session.config.mode == AttemptMode.practice && current.isAnswered;
+    final isCorrectOption = originalIndex == current.question.correctAnswer;
+    final isSelected = originalIndex == current.selectedOriginalIndex;
+
+    Color? feedbackColor;
+    if (revealed && isCorrectOption) {
+      feedbackColor = _correctColor;
+    } else if (revealed && isSelected) {
+      feedbackColor = _incorrectColor;
+    }
+
+    return FTile(
+      style: feedbackColor == null
+          ? const FItemStyleDelta.context()
+          : FItemStyleDelta.delta(
+              backgroundColor: FVariantsValueDelta.delta([
+                FVariantValueDeltaOperation.all(
+                  feedbackColor.withValues(alpha: 0.12),
+                ),
+              ]),
+            ),
+      title: Text(
+        current.question.options[originalIndex],
+        style: feedbackColor == null
+            ? null
+            : TextStyle(color: feedbackColor, fontWeight: FontWeight.w600),
+      ),
+      selected: isSelected,
+      suffix: !revealed
+          ? null
+          : isCorrectOption
+          ? Icon(FIcons.circleCheck, color: _correctColor)
+          : (isSelected ? Icon(FIcons.circleX, color: _incorrectColor) : null),
+      onPress: revealed ? null : () => notifier.selectAnswer(originalIndex),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen<ExamSessionState?>(examSessionProvider, (previous, next) {
@@ -181,86 +269,136 @@ class _ExamRunnerScreenState extends ConsumerState<ExamRunnerScreen> with Widget
       },
       child: FScaffold(
         header: FHeader.nested(
-          title: Text('Question ${session.currentIndex + 1} / ${session.questions.length}'),
+          title: Text(
+            'Question ${session.currentIndex + 1} / ${session.questions.length}',
+          ),
           prefixes: [
-            FHeaderAction.back(onPress: () async {
-              if (await _confirmExit()) {
-                if (context.mounted) Navigator.pop(context);
-              }
-            }),
+            FHeaderAction.back(
+              onPress: () async {
+                if (await _confirmExit()) {
+                  if (context.mounted) Navigator.pop(context);
+                }
+              },
+            ),
+          ],
+          suffixes: [
+            FHeaderAction(
+              icon: const Icon(FIcons.send),
+              onPress: () => _confirmSubmitEarly(session),
+            ),
           ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (session.examRemaining != null || session.questionRemaining != null)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (session.examRemaining != null)
-                    FBadge(child: Text('Exam: ${_formatDuration(session.examRemaining!)}')),
-                  if (session.questionRemaining != null)
-                    FBadge(
-                      variant: session.questionRemaining!.inSeconds <= 5
-                          ? FBadgeVariant.destructive
-                          : FBadgeVariant.secondary,
-                      child: Text('Question: ${_formatDuration(session.questionRemaining!)}'),
+        // top: false — the header already safe-areas itself against the
+        // status bar/notch; this keeps the nav row clear of the gesture bar.
+        // minimum guarantees visible breathing room even on devices that
+        // report a zero/near-zero bottom inset.
+        child: SafeArea(
+          top: false,
+          minimum: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (session.examRemaining != null ||
+                  session.questionRemaining != null) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    if (session.examRemaining != null)
+                      FBadge(
+                        child: Text(
+                          'Exam: ${_formatDuration(session.examRemaining!)}',
+                        ),
+                      ),
+                    if (session.questionRemaining != null)
+                      FBadge(
+                        variant: session.questionRemaining!.inSeconds <= 5
+                            ? FBadgeVariant.destructive
+                            : FBadgeVariant.secondary,
+                        child: Text(
+                          'Question: ${_formatDuration(session.questionRemaining!)}',
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
+              // Scrolls independently so the question/options size to their
+              // own content instead of being stretched to fill the screen —
+              // the nav row below always stays pinned to the bottom. The
+              // LayoutBuilder + ConstrainedBox(minHeight) lets short content
+              // center vertically in the available space while still
+              // scrolling normally if it's taller than the screen.
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) => SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(current.question.questionText),
+                          const SizedBox(height: 12),
+                          FTileGroup(
+                            children: [
+                              for (final originalIndex in current.optionOrder)
+                                _buildOption(
+                                  session,
+                                  current,
+                                  notifier,
+                                  originalIndex,
+                                ),
+                            ],
+                          ),
+                          if (session.config.mode == AttemptMode.practice &&
+                              current.isAnswered) ...[
+                            const SizedBox(height: 8),
+                            FAlert(
+                              variant: current.isCorrect
+                                  ? FAlertVariant.primary
+                                  : FAlertVariant.destructive,
+                              title: Text(
+                                current.isCorrect ? 'Correct' : 'Incorrect',
+                              ),
+                              subtitle: current.question.explanation != null
+                                  ? Text(current.question.explanation!)
+                                  : null,
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                ],
-              ),
-            const SizedBox(height: 12),
-            Text(current.question.questionText),
-            const SizedBox(height: 12),
-            Expanded(
-              child: FTileGroup(
-                children: [
-                  for (final originalIndex in current.optionOrder)
-                    FTile(
-                      title: Text(current.question.options[originalIndex]),
-                      selected: current.selectedOriginalIndex == originalIndex,
-                      suffix: session.config.mode != AttemptMode.practice || !current.isAnswered
-                          ? null
-                          : originalIndex == current.question.correctAnswer
-                              ? const Icon(FIcons.circleCheck)
-                              : (originalIndex == current.selectedOriginalIndex
-                                  ? const Icon(FIcons.circleX)
-                                  : null),
-                      onPress: session.config.mode == AttemptMode.practice && current.isAnswered
-                          ? null
-                          : () => notifier.selectAnswer(originalIndex),
-                    ),
-                ],
-              ),
-            ),
-            if (session.config.mode == AttemptMode.practice && current.isAnswered) ...[
-              const SizedBox(height: 8),
-              FAlert(
-                variant: current.isCorrect ? FAlertVariant.primary : FAlertVariant.destructive,
-                title: Text(current.isCorrect ? 'Correct' : 'Incorrect'),
-                subtitle: current.question.explanation != null ? Text(current.question.explanation!) : null,
-              ),
-            ],
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                if (session.currentIndex > 0)
-                  Expanded(
-                    child: FButton(
-                      variant: FButtonVariant.outline,
-                      onPress: notifier.previous,
-                      child: const Text('Previous'),
-                    ),
-                  ),
-                if (session.currentIndex > 0) const SizedBox(width: 12),
-                Expanded(
-                  child: FButton(
-                    onPress: notifier.next,
-                    child: Text(session.isLast ? 'Submit' : (current.isAnswered ? 'Next' : 'Skip')),
                   ),
                 ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  if (session.currentIndex > 0)
+                    Expanded(
+                      child: FButton(
+                        variant: FButtonVariant.outline,
+                        onPress: notifier.previous,
+                        child: const Text('Previous'),
+                      ),
+                    ),
+                  if (session.currentIndex > 0) const SizedBox(width: 12),
+                  Expanded(
+                    child: FButton(
+                      onPress: notifier.next,
+                      child: Text(
+                        session.isLast
+                            ? 'Submit'
+                            : (current.isAnswered ? 'Next' : 'Skip'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

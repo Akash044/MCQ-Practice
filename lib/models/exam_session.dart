@@ -24,7 +24,8 @@ class RunnerQuestion {
     return RunnerQuestion(
       question: question,
       optionOrder: optionOrder,
-      selectedOriginalIndex: selectedOriginalIndex ?? this.selectedOriginalIndex,
+      selectedOriginalIndex:
+          selectedOriginalIndex ?? this.selectedOriginalIndex,
       timeTakenSeconds: timeTakenSeconds ?? this.timeTakenSeconds,
     );
   }
@@ -52,14 +53,18 @@ class ExamSessionState {
   RunnerQuestion get current => questions[currentIndex];
   bool get isLast => currentIndex == questions.length - 1;
 
-  int get correctCount => questions.where((q) => q.isAnswered && q.isCorrect).length;
-  int get wrongCount => questions.where((q) => q.isAnswered && !q.isCorrect).length;
+  int get correctCount =>
+      questions.where((q) => q.isAnswered && q.isCorrect).length;
+  int get wrongCount =>
+      questions.where((q) => q.isAnswered && !q.isCorrect).length;
   int get skippedCount => questions.where((q) => !q.isAnswered).length;
   num get totalScore =>
-      correctCount * config.marksPerCorrect - wrongCount * config.negativeMarksPerWrong;
+      correctCount * config.marksPerCorrect -
+      wrongCount * config.negativeMarksPerWrong;
 
   Duration? get examRemaining => examEndTime?.difference(DateTime.now());
-  Duration? get questionRemaining => questionEndTime?.difference(DateTime.now());
+  Duration? get questionRemaining =>
+      questionEndTime?.difference(DateTime.now());
 
   ExamSessionState copyWith({
     List<RunnerQuestion>? questions,
@@ -75,7 +80,9 @@ class ExamSessionState {
       currentIndex: currentIndex ?? this.currentIndex,
       startedAt: startedAt,
       examEndTime: examEndTime ?? this.examEndTime,
-      questionEndTime: clearQuestionEndTime ? null : (questionEndTime ?? this.questionEndTime),
+      questionEndTime: clearQuestionEndTime
+          ? null
+          : (questionEndTime ?? this.questionEndTime),
       submitted: submitted ?? this.submitted,
     );
   }

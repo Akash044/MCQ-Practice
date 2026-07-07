@@ -15,9 +15,10 @@ class SyncService {
   Future<void> flushPending() async {
     final pending = await LocalDb.getPendingAttempts();
     for (final row in pending) {
-      final attemptMap = jsonDecode(row['attempt_json'] as String) as Map<String, dynamic>;
-      final answerMaps =
-          (jsonDecode(row['answers_json'] as String) as List).cast<Map<String, dynamic>>();
+      final attemptMap =
+          jsonDecode(row['attempt_json'] as String) as Map<String, dynamic>;
+      final answerMaps = (jsonDecode(row['answers_json'] as String) as List)
+          .cast<Map<String, dynamic>>();
       try {
         final saved = await _service.insertAttemptRaw(attemptMap);
         final attemptId = saved['id'] as String;

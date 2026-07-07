@@ -67,6 +67,9 @@ dependencies:
   # uses the platform sqflite implementation directly
   sqflite_common_ffi: ^2.4.0+3
 
+  # Persists the light/dark theme preference
+  shared_preferences: ^2.5.5
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
