@@ -74,3 +74,21 @@ create index idx_questions_question_set_id on questions(question_set_id);
 create index idx_attempts_question_set_id on attempts(question_set_id);
 create index idx_attempt_answers_attempt_id on attempt_answers(attempt_id);
 create index idx_attempt_answers_question_id on attempt_answers(question_id);
+
+-- RLS is enabled (Supabase flags tables without it), but the app has no
+-- auth layer yet — it's a single-user personal tool accessed with the
+-- project's anon/publishable key (see docs/PRD.md section 8 and the "Auth"
+-- open decision in docs/IMPLEMENTATION_PLAN.md). These policies are
+-- intentionally permissive to match that; scope them to auth.uid() if
+-- multi-user auth is ever added.
+alter table folders enable row level security;
+alter table question_sets enable row level security;
+alter table questions enable row level security;
+alter table attempts enable row level security;
+alter table attempt_answers enable row level security;
+
+create policy "allow all - folders" on folders for all using (true) with check (true);
+create policy "allow all - question_sets" on question_sets for all using (true) with check (true);
+create policy "allow all - questions" on questions for all using (true) with check (true);
+create policy "allow all - attempts" on attempts for all using (true) with check (true);
+create policy "allow all - attempt_answers" on attempt_answers for all using (true) with check (true);
