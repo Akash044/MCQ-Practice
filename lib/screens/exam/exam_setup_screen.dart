@@ -12,13 +12,23 @@ import '../../models/question_set.dart';
 import '../../providers/exam_providers.dart';
 import '../../providers/exam_session_notifier.dart';
 import '../../utils/mastery.dart';
+import '../progress/progress_screen.dart';
 import 'exam_runner_screen.dart';
 
 class ExamSetupScreen extends ConsumerStatefulWidget {
-  const ExamSetupScreen({super.key, required this.folder, required this.questionSet});
+  const ExamSetupScreen({
+    super.key,
+    required this.folder,
+    required this.questionSet,
+    this.initialSourceType = AttemptSourceType.fullSet,
+  });
 
   final Folder folder;
   final QuestionSet questionSet;
+
+  /// Lets the results screen jump here with "Wrong answers" or "Skipped"
+  /// pre-selected instead of always defaulting to the full set.
+  final AttemptSourceType initialSourceType;
 
   @override
   ConsumerState<ExamSetupScreen> createState() => _ExamSetupScreenState();
@@ -26,7 +36,7 @@ class ExamSetupScreen extends ConsumerStatefulWidget {
 
 class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
   AttemptMode _mode = AttemptMode.practice;
-  AttemptSourceType _sourceType = AttemptSourceType.fullSet;
+  late AttemptSourceType _sourceType = widget.initialSourceType;
   String? _topicFilter;
   String? _difficultyFilter;
   bool _shuffleQuestions = true;
@@ -124,6 +134,15 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
       header: FHeader.nested(
         title: Text(widget.questionSet.title),
         prefixes: [FHeaderAction.back(onPress: () => Navigator.pop(context))],
+        suffixes: [
+          FHeaderAction(
+            icon: const Icon(FIcons.chartLine),
+            onPress: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => ProgressScreen(questionSet: widget.questionSet)),
+            ),
+          ),
+        ],
       ),
       child: questionsAsync.when(
         loading: () => const Center(child: FCircularProgress()),

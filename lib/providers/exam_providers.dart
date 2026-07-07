@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/attempt.dart';
 import '../models/attempt_answer.dart';
 import '../models/question.dart';
 import 'supabase_providers.dart';
@@ -10,4 +11,8 @@ final questionsForSetProvider = FutureProvider.family<List<Question>, String>((r
 
 final answersForSetProvider = FutureProvider.family<List<AttemptAnswer>, String>((ref, setId) async {
   return ref.watch(supabaseServiceProvider).fetchAllAnswersForSet(setId);
+});
+
+final attemptHistoryProvider = FutureProvider.family<List<Attempt>, String>((ref, setId) async {
+  return ref.watch(supabaseServiceProvider).fetchAttemptHistory(setId);
 });

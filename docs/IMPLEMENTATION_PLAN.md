@@ -27,17 +27,17 @@ Companion to [PRD.md](./PRD.md). Tracks the build order and what's done so a fut
 
 ## Phase 3 — Results & retry pools
 - [x] Results screen (`lib/screens/results/results_screen.dart`): score, correct/wrong/skipped counts, total time, per-question your-answer vs. correct-answer vs. skipped + explanation (via `FCard` per question)
-- [ ] "Retry Wrong Answers" / "Retry Skipped" buttons *from the results screen* — not added; today you retry by going back to the set and picking the source in exam setup (which already supports it). Revisit if one-tap retry from results is worth the duplication.
-- [ ] Wrong Answer Bank screen (filterable by topic/difficulty) driving custom retry exams — pool derivation logic already exists in `lib/utils/mastery.dart` (`QuestionPools.wrongPool`/`skippedPool`), just needs a dedicated browsing screen
-- [ ] Skipped Bank screen (same note as above)
+- [x] "Retry wrong" / "Retry skipped" buttons on the results screen — push `ExamSetupScreen` with `initialSourceType` pre-selected (`AttemptSourceType.wrongAnswersRetry`/`skippedRetry`); setup screen still recomputes the pool from *all* attempts of the set (not just this one session), which is the correct scope per §5.2.1
+- [ ] Dedicated Wrong Answer Bank / Skipped Bank browsing screens (filterable by topic/difficulty) — not built; pool derivation logic already exists in `lib/utils/mastery.dart` (`QuestionPools.wrongPool`/`skippedPool`) and is exercised by both exam setup and progress dashboard, so a browsing screen is mostly UI work reusing that
 
 ## Phase 4 — Progress dashboard
-- [ ] Attempt history list (date, set, score, duration)
-- [ ] Accuracy trend chart (fl_chart), filtered to `source_type in ('full_set','custom')` per §9
-- [ ] Per-topic accuracy breakdown
-- [ ] Persistent weak-spots view (wrong-rate threshold, worst-first)
-- [x] Mastery computation (last N=2 consecutive correct `attempt_answers`, any source_type, excluding skips) — `QuestionPools.isMastered`/`wrongPool`/`skippedPool` in `lib/utils/mastery.dart`, already wired into exam setup's source picker; still needs a UI surface for browsing (see Wrong/Skipped Bank screens in Phase 3)
-- [ ] Streak / consistency tracking
+- [x] Attempt history list (`lib/screens/progress/progress_screen.dart`, via `attemptHistoryProvider` → `SupabaseService.fetchAttemptHistory`): date, source/mode, score, duration
+- [x] Accuracy trend line chart (`fl_chart`'s `LineChart`), computed by `ProgressStats.accuracyTrend` — filtered to `source_type in ('full_set','custom')` via `AttemptSourceTypeX.countsTowardTrendCharts` per §9. Needs ≥2 trend-eligible attempts before it renders; shows a hint text otherwise.
+- [x] Per-topic accuracy breakdown (`ProgressStats.topicAccuracy`, same trend-eligible filter) — rendered as a sorted (worst-first) list with `FDeterminateProgress` bars
+- [x] Persistent weak-spots view (`ProgressStats.weakSpots`) — wrong-rate ≥ 40% across **all** attempts regardless of source_type (§6 doesn't restrict the per-question wrong-rate view the way it restricts trend/topic charts), requires ≥2 non-skipped answers so one bad guess doesn't dominate
+- [x] Mastery computation (last N=2 consecutive correct `attempt_answers`, any source_type, excluding skips) — `QuestionPools.isMastered`/`wrongPool`/`skippedPool` in `lib/utils/mastery.dart`, wired into exam setup's source picker and the weak-spots/retry flows
+- [x] Streak / consistency tracking (`ProgressStats.streak`) — distinct calendar days across *any* attempt (streaks measure practice consistency, not accuracy, so retry sessions count here even though they're excluded from the trend chart — a judgment call, revisit if it feels wrong in practice)
+- Entry point: tap the chart-line icon in the exam setup screen's header (`FHeaderAction` next to the back button) — there's no dashboard link from the folder/set list yet, only from a set you're about to attempt
 
 ## Phase 5 — Polish
 - [ ] Offline sync: flush pending-sync queue when connectivity returns (`connectivity_plus`)

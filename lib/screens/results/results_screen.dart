@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show MaterialPageRoute;
 import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
@@ -5,6 +6,7 @@ import '../../models/attempt.dart';
 import '../../models/exam_session.dart';
 import '../../models/folder.dart';
 import '../../models/question_set.dart';
+import '../exam/exam_setup_screen.dart';
 
 class ResultsScreen extends StatelessWidget {
   const ResultsScreen({
@@ -30,7 +32,7 @@ class ResultsScreen extends StatelessWidget {
     return FScaffold(
       header: FHeader.nested(
         title: const Text('Results'),
-        prefixes: [FHeaderAction.back(onPress: () => Navigator.popUntil(context, (r) => r.isFirst))],
+        prefixes: [FHeaderAction.back(onPress: () => Navigator.pop(context))],
       ),
       child: ListView(
         children: [
@@ -53,9 +55,48 @@ class ResultsScreen extends StatelessWidget {
               ],
             ),
           ),
+          if (session.wrongCount > 0 || session.skippedCount > 0) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                if (session.wrongCount > 0)
+                  Expanded(
+                    child: FButton(
+                      variant: FButtonVariant.outline,
+                      prefix: const Icon(FIcons.rotateCcw),
+                      onPress: () => _retry(context, AttemptSourceType.wrongAnswersRetry),
+                      child: const Text('Retry wrong'),
+                    ),
+                  ),
+                if (session.wrongCount > 0 && session.skippedCount > 0) const SizedBox(width: 12),
+                if (session.skippedCount > 0)
+                  Expanded(
+                    child: FButton(
+                      variant: FButtonVariant.outline,
+                      prefix: const Icon(FIcons.rotateCcw),
+                      onPress: () => _retry(context, AttemptSourceType.skippedRetry),
+                      child: const Text('Retry skipped'),
+                    ),
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
           for (var i = 0; i < session.questions.length; i++) _buildQuestionCard(i, session.questions[i]),
         ],
+      ),
+    );
+  }
+
+  void _retry(BuildContext context, AttemptSourceType sourceType) {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ExamSetupScreen(
+          folder: folder,
+          questionSet: questionSet,
+          initialSourceType: sourceType,
+        ),
       ),
     );
   }
