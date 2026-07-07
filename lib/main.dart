@@ -53,7 +53,7 @@ class McqApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = FThemes.zinc.light.touch;
     return MaterialApp(
-      title: 'MCQ Exam & Progress Tracker',
+      title: 'MCQ Practice',
       theme: theme.toApproximateMaterialTheme(),
       builder: (context, child) => FTheme(data: theme, child: FToaster(child: child!)),
       home: const FolderListScreen(),

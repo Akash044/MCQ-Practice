@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart' show Clipboard;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
@@ -25,7 +26,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   bool _importing = false;
   String? _loadError;
 
-  Future<void> _pickFile() async {
+  Future<void> _processJsonText(String text, {String? fileName}) async {
     setState(() {
       _loading = true;
       _loadError = null;
@@ -33,30 +34,14 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     });
 
     try {
-      final picked = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-        withData: true,
-      );
-      if (picked == null || picked.files.isEmpty) {
-        setState(() => _loading = false);
-        return;
-      }
-
-      final file = picked.files.single;
-      final bytes = file.bytes;
-      if (bytes == null) {
-        throw Exception('Could not read file contents.');
-      }
-
-      final decoded = jsonDecode(utf8.decode(bytes));
+      final decoded = jsonDecode(text);
       if (decoded is! Map<String, dynamic>) {
         throw Exception('Top-level JSON must be an object (see docs/PRD.md section 4).');
       }
 
       final result = QuestionSetValidator.validate(decoded);
       setState(() {
-        _fileName = file.name;
+        if (fileName != null) _fileName = fileName;
         _result = result;
         _loading = false;
       });
@@ -66,6 +51,69 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         _loading = false;
       });
     }
+  }
+
+  Future<void> _pickFile() async {
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        withData: true,
+      );
+      if (picked == null || picked.files.isEmpty) return;
+
+      final file = picked.files.single;
+      final bytes = file.bytes;
+      if (bytes == null) {
+        setState(() => _loadError = 'Could not read file contents.');
+        return;
+      }
+
+      await _processJsonText(utf8.decode(bytes), fileName: file.name);
+    } catch (e) {
+      setState(() => _loadError = 'Failed to read file: $e');
+    }
+  }
+
+  Future<void> _pasteJson() async {
+    final controller = TextEditingController();
+    try {
+      final clip = await Clipboard.getData('text/plain');
+      if (clip?.text != null) controller.text = clip!.text!;
+    } catch (_) {
+      // Clipboard access can fail on some platforms; just start with an empty box.
+    }
+
+    if (!mounted) return;
+    final text = await showFDialog<String>(
+      context: context,
+      builder: (context, style, animation) => FDialog(
+        title: const Text('Paste JSON'),
+        body: SizedBox(
+          width: double.maxFinite,
+          child: FTextField(
+            autofocus: true,
+            maxLines: 10,
+            hint: 'Paste your question set JSON here',
+            control: FTextFieldControl.managed(controller: controller),
+          ),
+        ),
+        actions: [
+          FButton(
+            variant: FButtonVariant.outline,
+            onPress: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FButton(
+            onPress: () => Navigator.pop(context, controller.text),
+            child: const Text('Use this text'),
+          ),
+        ],
+      ),
+    );
+
+    if (text == null || text.trim().isEmpty) return;
+    await _processJsonText(text);
   }
 
   Future<void> _confirmImport() async {
@@ -105,17 +153,32 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          FButton(
-            onPress: _loading ? null : _pickFile,
-            prefix: const Icon(FIcons.fileUp),
-            child: Text(_fileName ?? 'Choose .json file'),
+          Row(
+            children: [
+              Expanded(
+                child: FButton(
+                  onPress: _loading ? null : _pickFile,
+                  prefix: const Icon(FIcons.fileUp),
+                  child: Text(_fileName ?? 'Choose .json file'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FButton(
+                  variant: FButtonVariant.outline,
+                  onPress: _loading ? null : _pasteJson,
+                  prefix: const Icon(FIcons.clipboardPaste),
+                  child: const Text('Paste JSON'),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           if (_loading) const Center(child: FCircularProgress()),
           if (_loadError != null)
             FAlert(
               variant: FAlertVariant.destructive,
-              title: const Text('Could not read file'),
+              title: const Text('Could not read JSON'),
               subtitle: Text(_loadError!),
             ),
           if (result != null) Expanded(child: _buildResult(context, result)),

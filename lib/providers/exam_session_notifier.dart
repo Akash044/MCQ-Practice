@@ -161,6 +161,14 @@ class ExamSessionNotifier extends StateNotifier<ExamSessionState?> {
   }
 }
 
-final examSessionProvider = StateNotifierProvider.autoDispose<ExamSessionNotifier, ExamSessionState?>(
+// Deliberately not .autoDispose: ExamSetupScreen only ever does a one-off
+// `ref.read(examSessionProvider.notifier).start(...)` — nothing watches the
+// provider until the runner screen mounts a moment later via
+// pushReplacement. An autoDispose provider with zero active watchers gets
+// disposed on the next microtask, which raced with that navigation and
+// reset the session to null before the runner screen ever saw it (visible
+// as a stuck loading spinner). Kept alive for the app's lifetime instead;
+// each new exam just overwrites the state via `start()`.
+final examSessionProvider = StateNotifierProvider<ExamSessionNotifier, ExamSessionState?>(
   (ref) => ExamSessionNotifier(),
 );

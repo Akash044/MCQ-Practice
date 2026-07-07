@@ -1,6 +1,6 @@
 {
-    "name": "mcq_test",
-    "short_name": "mcq_test",
+    "name": "MCQ Practice",
+    "short_name": "MCQ Practice",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
