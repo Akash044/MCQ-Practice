@@ -5,6 +5,7 @@ class QuestionSet {
   final String? subject;
   final num defaultMarksPerCorrect;
   final num defaultNegativeMarksPerWrong;
+  final int position;
   final DateTime createdAt;
 
   const QuestionSet({
@@ -14,6 +15,7 @@ class QuestionSet {
     this.subject,
     this.defaultMarksPerCorrect = 1,
     this.defaultNegativeMarksPerWrong = 0,
+    this.position = 0,
     required this.createdAt,
   });
 
@@ -26,6 +28,7 @@ class QuestionSet {
       defaultMarksPerCorrect: (map['default_marks_per_correct'] as num?) ?? 1,
       defaultNegativeMarksPerWrong:
           (map['default_negative_marks_per_wrong'] as num?) ?? 0,
+      position: (map['position'] as int?) ?? 0,
       createdAt: DateTime.parse(map['created_at'] as String),
     );
   }

@@ -8,6 +8,7 @@ import '../../models/attempt_answer.dart';
 import '../../models/exam_session.dart';
 import '../../models/folder.dart';
 import '../../models/question_set.dart';
+import '../../providers/exam_providers.dart';
 import '../../providers/exam_session_notifier.dart';
 import '../../providers/supabase_providers.dart';
 import '../../services/local_db.dart';
@@ -162,6 +163,13 @@ class _ExamRunnerScreenState extends ConsumerState<ExamRunnerScreen>
       await service.insertAttemptAnswersRaw([
         for (final a in answerInsertMaps) {...a, 'attempt_id': saved.id},
       ]);
+      // Both providers are plain (non-autoDispose) FutureProviders that cache
+      // their result indefinitely — without this, the just-finished attempt
+      // is invisible to ProgressScreen's history list and to the wrong/
+      // skipped pools ExamSetupScreen computes for "retry" flows, since both
+      // would still be serving the pre-attempt cached data.
+      ref.invalidate(answersForSetProvider(widget.questionSet.id));
+      ref.invalidate(attemptHistoryProvider(widget.questionSet.id));
     } catch (e) {
       try {
         await LocalDb.enqueuePendingAttempt(attemptInsertMap, answerInsertMaps);
@@ -215,6 +223,12 @@ class _ExamRunnerScreenState extends ConsumerState<ExamRunnerScreen>
       feedbackColor = _correctColor;
     } else if (revealed && isSelected) {
       feedbackColor = _incorrectColor;
+    } else if (isSelected) {
+      // Test mode never reveals correct/incorrect, and even practice mode
+      // is unrevealed for one frame before `isAnswered` flips true — either
+      // way, FTile's built-in `selected` styling alone was too subtle to
+      // tell at a glance whether an option was actually picked.
+      feedbackColor = context.theme.colors.primary;
     }
 
     return FTile(
@@ -235,7 +249,9 @@ class _ExamRunnerScreenState extends ConsumerState<ExamRunnerScreen>
       ),
       selected: isSelected,
       suffix: !revealed
-          ? null
+          ? (isSelected
+                ? Icon(FIcons.circleCheck, color: feedbackColor)
+                : null)
           : isCorrectOption
           ? Icon(FIcons.circleCheck, color: _correctColor)
           : (isSelected ? Icon(FIcons.circleX, color: _incorrectColor) : null),

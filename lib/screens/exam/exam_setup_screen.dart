@@ -25,6 +25,7 @@ class ExamSetupScreen extends ConsumerStatefulWidget {
     this.initialSourceType = AttemptSourceType.fullSet,
     this.initialTopicFilter,
     this.initialDifficultyFilter,
+    this.preselectedQuestionIds,
   });
 
   final Folder folder;
@@ -36,6 +37,13 @@ class ExamSetupScreen extends ConsumerStatefulWidget {
   final AttemptSourceType initialSourceType;
   final String? initialTopicFilter;
   final String? initialDifficultyFilter;
+
+  /// When set, locks the exam to exactly these question ids instead of
+  /// deriving a pool from [initialSourceType] — used by the progress
+  /// screen's per-attempt "retry wrong"/"retry skipped" actions, where the
+  /// pool must reflect that one specific past attempt rather than the
+  /// set-wide, mastery-aware wrong/skipped pool [QuestionPools] computes.
+  final Set<String>? preselectedQuestionIds;
 
   @override
   ConsumerState<ExamSetupScreen> createState() => _ExamSetupScreenState();
@@ -86,24 +94,32 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
   }
 
   void _start(List<Question> allQuestions, List<AttemptAnswer> allAnswers) {
+    final preselected = widget.preselectedQuestionIds;
     List<Question> base;
-    switch (_sourceType) {
-      case AttemptSourceType.fullSet:
-      case AttemptSourceType.custom:
-        base = allQuestions;
-      case AttemptSourceType.wrongAnswersRetry:
-        base = QuestionPools.wrongPool(allQuestions, allAnswers);
-      case AttemptSourceType.skippedRetry:
-        base = QuestionPools.skippedPool(allQuestions, allAnswers);
+    if (preselected != null) {
+      base = allQuestions.where((q) => preselected.contains(q.id)).toList();
+    } else {
+      switch (_sourceType) {
+        case AttemptSourceType.fullSet:
+        case AttemptSourceType.custom:
+          base = allQuestions;
+        case AttemptSourceType.wrongAnswersRetry:
+          base = QuestionPools.wrongPool(allQuestions, allAnswers);
+        case AttemptSourceType.skippedRetry:
+          base = QuestionPools.skippedPool(allQuestions, allAnswers);
+      }
     }
 
-    final filtered = base.where((q) {
-      if (_topicFilter != null && q.topic != _topicFilter) return false;
-      if (_difficultyFilter != null && q.difficulty != _difficultyFilter) {
-        return false;
-      }
-      return true;
-    }).toList();
+    final filtered = preselected != null
+        ? base
+        : base.where((q) {
+            if (_topicFilter != null && q.topic != _topicFilter) return false;
+            if (_difficultyFilter != null &&
+                q.difficulty != _difficultyFilter) {
+              return false;
+            }
+            return true;
+          }).toList();
 
     if (filtered.isEmpty) {
       showFToast(
@@ -191,8 +207,10 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
             onPress: () => Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) =>
-                    ProgressScreen(questionSet: widget.questionSet),
+                builder: (context) => ProgressScreen(
+                  folder: widget.folder,
+                  questionSet: widget.questionSet,
+                ),
               ),
             ),
           ),
@@ -226,14 +244,31 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
   }
 
   Widget _buildForm(List<Question> questions, List<AttemptAnswer> answers) {
+    final wrongCount = QuestionPools.wrongPool(questions, answers).length;
+    final skippedCount = QuestionPools.skippedPool(questions, answers).length;
+
+    // The exam timer's default (~30s/question) should track whichever source
+    // is currently selected — a "wrong answers" retry of 5 questions
+    // shouldn't default to a timer sized for the full 100-question set.
+    int poolCountFor(AttemptSourceType type) => switch (type) {
+      AttemptSourceType.fullSet ||
+      AttemptSourceType.custom => questions.length,
+      AttemptSourceType.wrongAnswersRetry => wrongCount,
+      AttemptSourceType.skippedRetry => skippedCount,
+    };
+    void selectSource(AttemptSourceType type) {
+      setState(() {
+        _sourceType = type;
+        _examMinutesController.text =
+            '${(poolCountFor(type) / 2).ceil().clamp(1, 999)}';
+      });
+    }
+
     if (!_examMinutesDefaultSet) {
       _examMinutesDefaultSet = true;
       _examMinutesController.text =
-          '${(questions.length / 2).ceil().clamp(1, 999)}';
+          '${(poolCountFor(_sourceType) / 2).ceil().clamp(1, 999)}';
     }
-
-    final wrongCount = QuestionPools.wrongPool(questions, answers).length;
-    final skippedCount = QuestionPools.skippedPool(questions, answers).length;
 
     final topics =
         questions.map((q) => q.topic).whereType<String>().toSet().toList()
@@ -246,98 +281,102 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
       children: [
         Text('Mode', style: context.theme.typography.sm),
         const SizedBox(height: 8),
-        FTileGroup(
-          children: [
-            FTile(
-              title: const Text('Practice (instant feedback)'),
-              selected: _mode == AttemptMode.practice,
-              onPress: () => setState(() => _mode = AttemptMode.practice),
-            ),
-            FTile(
-              title: const Text('Test (score at the end)'),
-              selected: _mode == AttemptMode.test,
-              onPress: () => setState(() => _mode = AttemptMode.test),
-            ),
-          ],
+        FRadio(
+          value: _mode == AttemptMode.practice,
+          onChange: (_) => setState(() => _mode = AttemptMode.practice),
+          label: const Text('Practice (instant feedback)'),
+        ),
+        FRadio(
+          value: _mode == AttemptMode.test,
+          onChange: (_) => setState(() => _mode = AttemptMode.test),
+          label: const Text('Test (score at the end)'),
         ),
         const SizedBox(height: 16),
-        Text('Source', style: context.theme.typography.sm),
-        const SizedBox(height: 8),
-        FTileGroup(
-          children: [
-            FTile(
-              title: Text('Full set (${questions.length})'),
-              selected: _sourceType == AttemptSourceType.fullSet,
-              onPress: () =>
-                  setState(() => _sourceType = AttemptSourceType.fullSet),
+        if (widget.preselectedQuestionIds != null) ...[
+          FAlert(
+            title: Text(
+              widget.initialSourceType == AttemptSourceType.skippedRetry
+                  ? 'Retrying skipped questions'
+                  : 'Retrying wrong answers',
             ),
-            FTile(
-              title: Text('Wrong answers ($wrongCount)'),
-              enabled: wrongCount > 0,
-              selected: _sourceType == AttemptSourceType.wrongAnswersRetry,
-              onPress: () => setState(
-                () => _sourceType = AttemptSourceType.wrongAnswersRetry,
+            subtitle: Text(
+              '${widget.preselectedQuestionIds!.length} question'
+              '${widget.preselectedQuestionIds!.length == 1 ? '' : 's'} '
+              'from that attempt.',
+            ),
+          ),
+          const SizedBox(height: 16),
+        ] else ...[
+          Text('Source', style: context.theme.typography.sm),
+          const SizedBox(height: 8),
+          FRadio(
+            value: _sourceType == AttemptSourceType.fullSet,
+            onChange: (_) => selectSource(AttemptSourceType.fullSet),
+            label: Text('Full set (${questions.length})'),
+          ),
+          FRadio(
+            value: _sourceType == AttemptSourceType.wrongAnswersRetry,
+            enabled: wrongCount > 0,
+            onChange: (_) => selectSource(AttemptSourceType.wrongAnswersRetry),
+            label: Text('Wrong answers ($wrongCount)'),
+          ),
+          FRadio(
+            value: _sourceType == AttemptSourceType.skippedRetry,
+            enabled: skippedCount > 0,
+            onChange: (_) => selectSource(AttemptSourceType.skippedRetry),
+            label: Text('Skipped questions ($skippedCount)'),
+          ),
+          if (wrongCount > 0 || skippedCount > 0) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                if (wrongCount > 0)
+                  Expanded(
+                    child: FButton(
+                      variant: FButtonVariant.ghost,
+                      onPress: () => _openBank(BankPoolType.wrong),
+                      child: const Text('Browse wrong answers'),
+                    ),
+                  ),
+                if (skippedCount > 0)
+                  Expanded(
+                    child: FButton(
+                      variant: FButtonVariant.ghost,
+                      onPress: () => _openBank(BankPoolType.skipped),
+                      child: const Text('Browse skipped'),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 16),
+          if (topics.isNotEmpty) ...[
+            FSelect<String?>(
+              label: const Text('Topic filter'),
+              hint: 'All topics',
+              items: {'All topics': null, for (final t in topics) t: t},
+              control: FSelectControl.managed(
+                initial: _topicFilter,
+                onChange: (v) => setState(() => _topicFilter = v),
               ),
             ),
-            FTile(
-              title: Text('Skipped questions ($skippedCount)'),
-              enabled: skippedCount > 0,
-              selected: _sourceType == AttemptSourceType.skippedRetry,
-              onPress: () =>
-                  setState(() => _sourceType = AttemptSourceType.skippedRetry),
-            ),
+            const SizedBox(height: 12),
           ],
-        ),
-        if (wrongCount > 0 || skippedCount > 0) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              if (wrongCount > 0)
-                Expanded(
-                  child: FButton(
-                    variant: FButtonVariant.ghost,
-                    onPress: () => _openBank(BankPoolType.wrong),
-                    child: const Text('Browse wrong answers'),
-                  ),
-                ),
-              if (skippedCount > 0)
-                Expanded(
-                  child: FButton(
-                    variant: FButtonVariant.ghost,
-                    onPress: () => _openBank(BankPoolType.skipped),
-                    child: const Text('Browse skipped'),
-                  ),
-                ),
-            ],
-          ),
-        ],
-        const SizedBox(height: 16),
-        if (topics.isNotEmpty) ...[
-          FSelect<String?>(
-            label: const Text('Topic filter'),
-            hint: 'All topics',
-            items: {'All topics': null, for (final t in topics) t: t},
-            control: FSelectControl.managed(
-              initial: _topicFilter,
-              onChange: (v) => setState(() => _topicFilter = v),
+          if (difficulties.isNotEmpty) ...[
+            FSelect<String?>(
+              label: const Text('Difficulty filter'),
+              hint: 'All difficulties',
+              items: {
+                'All difficulties': null,
+                for (final d in difficulties) d: d,
+              },
+              control: FSelectControl.managed(
+                initial: _difficultyFilter,
+                onChange: (v) => setState(() => _difficultyFilter = v),
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-        ],
-        if (difficulties.isNotEmpty) ...[
-          FSelect<String?>(
-            label: const Text('Difficulty filter'),
-            hint: 'All difficulties',
-            items: {
-              'All difficulties': null,
-              for (final d in difficulties) d: d,
-            },
-            control: FSelectControl.managed(
-              initial: _difficultyFilter,
-              onChange: (v) => setState(() => _difficultyFilter = v),
-            ),
-          ),
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
+          ],
         ],
         Row(
           children: [

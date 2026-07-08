@@ -1,19 +1,25 @@
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart' show MaterialPageRoute;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
 
 import '../../models/attempt.dart';
 import '../../models/attempt_answer.dart';
+import '../../models/folder.dart';
 import '../../models/question.dart';
 import '../../models/question_set.dart';
 import '../../providers/exam_providers.dart';
+import '../../providers/supabase_providers.dart';
+import '../../utils/network_error.dart';
 import '../../utils/progress_stats.dart';
 import '../../widgets/error_state.dart';
+import '../exam/exam_setup_screen.dart';
 
 class ProgressScreen extends ConsumerWidget {
-  const ProgressScreen({super.key, required this.questionSet});
+  const ProgressScreen({super.key, required this.folder, required this.questionSet});
 
+  final Folder folder;
   final QuestionSet questionSet;
 
   @override
@@ -51,7 +57,7 @@ class ProgressScreen extends ConsumerWidget {
                 error: (err, stack) =>
                     ErrorState(error: err, label: 'Failed to load questions'),
                 data: (questions) =>
-                    _buildBody(context, attempts, answers, questions),
+                    _buildBody(context, ref, attempts, answers, questions),
               ),
             );
           },
@@ -60,8 +66,76 @@ class ProgressScreen extends ConsumerWidget {
     );
   }
 
+  void _retry(
+    BuildContext context,
+    AttemptSourceType sourceType,
+    Set<String> questionIds,
+  ) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ExamSetupScreen(
+          folder: folder,
+          questionSet: questionSet,
+          initialSourceType: sourceType,
+          preselectedQuestionIds: questionIds,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(
+    BuildContext context,
+    WidgetRef ref,
+    Attempt attempt,
+  ) async {
+    final confirmed = await showFDialog<bool>(
+      context: context,
+      builder: (context, style, animation) => FDialog(
+        title: const Text('Delete this attempt?'),
+        body: const Text(
+          'This removes it (and its answers) from your history. This cannot be undone.',
+        ),
+        actions: [
+          FButton(
+            variant: FButtonVariant.outline,
+            onPress: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FButton(
+            variant: FButtonVariant.destructive,
+            onPress: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await withConnectivityCheck(
+        () => ref.read(supabaseServiceProvider).deleteAttempt(attempt.id),
+      );
+      ref.invalidate(attemptHistoryProvider(questionSet.id));
+      ref.invalidate(answersForSetProvider(questionSet.id));
+    } catch (e) {
+      if (context.mounted) {
+        showFToast(
+          context: context,
+          variant: FToastVariant.destructive,
+          title: Text(
+            e is NoInternetException
+                ? 'No internet connection'
+                : 'Could not delete attempt',
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildBody(
     BuildContext context,
+    WidgetRef ref,
     List<Attempt> attempts,
     List<AttemptAnswer> answers,
     List<Question> questions,
@@ -181,19 +255,91 @@ class ProgressScreen extends ConsumerWidget {
         ],
         Text('History', style: context.theme.typography.sm),
         const SizedBox(height: 8),
-        FTileGroup(
+        for (final a in attempts)
+          _buildAttemptCard(context, ref, a, answers),
+      ],
+    );
+  }
+
+  Widget _buildAttemptCard(
+    BuildContext context,
+    WidgetRef ref,
+    Attempt a,
+    List<AttemptAnswer> answers,
+  ) {
+    final attemptAnswers = answers.where((ans) => ans.attemptId == a.id);
+    final wrongIds = attemptAnswers
+        .where((ans) => ans.status == AnswerStatus.incorrect)
+        .map((ans) => ans.questionId)
+        .toSet();
+    final skippedIds = attemptAnswers
+        .where((ans) => ans.status == AnswerStatus.skipped)
+        .map((ans) => ans.questionId)
+        .toSet();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: FCard(
+        title: Text('${a.startedAt.toLocal()}'.split('.').first),
+        subtitle: Text(
+          '${a.sourceType.value} · ${a.mode.value} · score ${a.totalScore ?? 0}'
+          ' · ${a.durationSeconds ?? 0}s',
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (final a in attempts)
-              FTile(
-                title: Text('${a.startedAt.toLocal()}'.split('.').first),
-                subtitle: Text(
-                  '${a.sourceType.value} · ${a.mode.value} · score ${a.totalScore ?? 0}',
-                ),
-                details: Text('${a.durationSeconds ?? 0}s'),
+            Text(
+              'Correct ${a.correctCount} · Wrong ${a.wrongCount} · Skipped ${a.skippedCount}',
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                if (wrongIds.isNotEmpty)
+                  Expanded(
+                    child: FButton(
+                      variant: FButtonVariant.outline,
+                      size: FButtonSizeVariant.sm,
+                      prefix: const Icon(FIcons.rotateCcw),
+                      onPress: () => _retry(
+                        context,
+                        AttemptSourceType.wrongAnswersRetry,
+                        wrongIds,
+                      ),
+                      child: Text('Retry wrong (${wrongIds.length})'),
+                    ),
+                  ),
+                if (wrongIds.isNotEmpty && skippedIds.isNotEmpty)
+                  const SizedBox(width: 8),
+                if (skippedIds.isNotEmpty)
+                  Expanded(
+                    child: FButton(
+                      variant: FButtonVariant.outline,
+                      size: FButtonSizeVariant.sm,
+                      prefix: const Icon(FIcons.rotateCcw),
+                      onPress: () => _retry(
+                        context,
+                        AttemptSourceType.skippedRetry,
+                        skippedIds,
+                      ),
+                      child: Text('Retry skipped (${skippedIds.length})'),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FButton(
+                variant: FButtonVariant.ghost,
+                size: FButtonSizeVariant.sm,
+                prefix: const Icon(FIcons.trash2),
+                onPress: () => _confirmDelete(context, ref, a),
+                child: const Text('Delete attempt'),
               ),
+            ),
           ],
         ),
-      ],
+      ),
     );
   }
 }

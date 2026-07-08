@@ -47,6 +47,7 @@ class SupabaseService {
         .from('question_sets')
         .select()
         .eq('folder_id', folderId)
+        .order('position', ascending: true)
         .order('created_at', ascending: false);
     return rows.map((row) => QuestionSet.fromMap(row)).toList();
   }
@@ -63,6 +64,7 @@ class SupabaseService {
     num defaultNegativeMarksPerWrong = 0,
     required List<Question> questions,
   }) async {
+    final position = await _nextPositionInFolder(folderId);
     final setRow = await _client
         .from('question_sets')
         .insert({
@@ -71,6 +73,7 @@ class SupabaseService {
           'subject': ?subject,
           'default_marks_per_correct': defaultMarksPerCorrect,
           'default_negative_marks_per_wrong': defaultNegativeMarksPerWrong,
+          'position': position,
         })
         .select()
         .single();
@@ -113,6 +116,47 @@ class SupabaseService {
     return rows.map((row) => Question.fromMap(row)).toList();
   }
 
+  Future<Question> addQuestion(Question question) async {
+    final row = await _client
+        .from('questions')
+        .insert(question.toInsertMap())
+        .select()
+        .single();
+    return Question.fromMap(row);
+  }
+
+  Future<void> deleteQuestion(String questionId) async {
+    await _client.from('questions').delete().eq('id', questionId);
+  }
+
+  // --- Reordering (question_sets.position) --------------------------------
+
+  /// New sets are appended after whatever currently has the highest
+  /// `position` in the folder, so drag-reordering never has to touch
+  /// existing rows just because a new exam was imported.
+  Future<int> _nextPositionInFolder(String folderId) async {
+    final rows = await _client
+        .from('question_sets')
+        .select('position')
+        .eq('folder_id', folderId)
+        .order('position', ascending: false)
+        .limit(1);
+    if (rows.isEmpty) return 0;
+    return ((rows.first['position'] as int?) ?? 0) + 1;
+  }
+
+  /// Persists a drag-reorder of a folder's exams. [orderedSetIds] must be the
+  /// full, newly-ordered list of question_set ids for that folder — each
+  /// gets its list index written back as its `position`.
+  Future<void> reorderQuestionSets(List<String> orderedSetIds) async {
+    for (var i = 0; i < orderedSetIds.length; i++) {
+      await _client
+          .from('question_sets')
+          .update({'position': i})
+          .eq('id', orderedSetIds[i]);
+    }
+  }
+
   // --- Attempts ------------------------------------------------------------
 
   Future<Attempt> createAttempt(Attempt attempt) async {
@@ -153,6 +197,12 @@ class SupabaseService {
         .eq('question_set_id', questionSetId)
         .order('started_at', ascending: false);
     return rows.map((row) => Attempt.fromMap(row)).toList();
+  }
+
+  /// `attempt_answers` rows cascade-delete via their `attempt_id` foreign key
+  /// (see supabase/schema.sql), so deleting the attempt is enough.
+  Future<void> deleteAttempt(String attemptId) async {
+    await _client.from('attempts').delete().eq('id', attemptId);
   }
 
   // --- Wrong-answer / skipped pools (docs/PRD.md section 6 derived views) --

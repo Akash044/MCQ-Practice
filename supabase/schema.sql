@@ -20,6 +20,7 @@ create table question_sets (
   subject text,                     -- from "subject" in the JSON
   default_marks_per_correct numeric default 1,
   default_negative_marks_per_wrong numeric default 0,
+  position int not null default 0,  -- manual drag-order within the folder
   created_at timestamptz default now()
 );
 
