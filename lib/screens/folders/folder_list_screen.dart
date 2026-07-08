@@ -9,6 +9,7 @@ import '../../providers/theme_provider.dart';
 import '../../utils/network_error.dart';
 import '../../widgets/error_state.dart';
 import '../custom/custom_exam_builder_screen.dart';
+import '../custom/random_mix_exam_screen.dart';
 import 'question_set_list_screen.dart';
 
 class FolderListScreen extends ConsumerWidget {
@@ -59,6 +60,47 @@ class FolderListScreen extends ConsumerWidget {
     }
   }
 
+  Future<void> _openCustomExamChooser(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final choice = await showFDialog<int>(
+      context: context,
+      builder: (context, style, animation) => FDialog(
+        title: const Text('Create Custom Exam'),
+        body: const Text('Build a new exam from questions you already have.'),
+        direction: Axis.vertical,
+        actions: [
+          FButton(
+            onPress: () => Navigator.pop(context, 1),
+            child: const Text('Pick questions from one exam'),
+          ),
+          FButton(
+            variant: FButtonVariant.outline,
+            onPress: () => Navigator.pop(context, 2),
+            child: const Text('Random mix from several exams'),
+          ),
+          FButton(
+            variant: FButtonVariant.ghost,
+            onPress: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null || !context.mounted) return;
+
+    final created = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => choice == 1
+            ? const CustomExamBuilderScreen()
+            : const RandomMixExamScreen(),
+      ),
+    );
+    if (created == true) ref.invalidate(foldersProvider);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final foldersAsync = ref.watch(foldersProvider);
@@ -81,15 +123,7 @@ class FolderListScreen extends ConsumerWidget {
           ),
           FHeaderAction(
             icon: const Icon(FIcons.copyPlus),
-            onPress: () async {
-              final created = await Navigator.push<bool>(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const CustomExamBuilderScreen(),
-                ),
-              );
-              if (created == true) ref.invalidate(foldersProvider);
-            },
+            onPress: () => _openCustomExamChooser(context, ref),
           ),
           FHeaderAction(
             icon: const Icon(FIcons.folderPlus),

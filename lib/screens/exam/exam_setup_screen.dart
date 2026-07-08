@@ -67,8 +67,12 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
     _marksController = TextEditingController(
       text: '${widget.questionSet.defaultMarksPerCorrect}',
     );
+    // The question set's own stored default is 0 unless explicitly set
+    // elsewhere; 0.5 is the more useful out-of-the-box default here since
+    // most real exams do apply negative marking.
+    final storedNegativeDefault = widget.questionSet.defaultNegativeMarksPerWrong;
     _negativeMarksController = TextEditingController(
-      text: '${widget.questionSet.defaultNegativeMarksPerWrong}',
+      text: '${storedNegativeDefault == 0 ? 0.5 : storedNegativeDefault}',
     );
   }
 
