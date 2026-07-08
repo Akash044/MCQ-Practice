@@ -8,6 +8,7 @@ import '../../providers/supabase_providers.dart';
 import '../../providers/theme_provider.dart';
 import '../../utils/network_error.dart';
 import '../../widgets/error_state.dart';
+import '../custom/custom_exam_builder_screen.dart';
 import 'question_set_list_screen.dart';
 
 class FolderListScreen extends ConsumerWidget {
@@ -77,6 +78,18 @@ class FolderListScreen extends ConsumerWidget {
             icon: Icon(isDark ? FIcons.sun : FIcons.moon),
             onPress: () =>
                 ref.read(themeModeProvider.notifier).toggle(resolvedBrightness),
+          ),
+          FHeaderAction(
+            icon: const Icon(FIcons.copyPlus),
+            onPress: () async {
+              final created = await Navigator.push<bool>(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const CustomExamBuilderScreen(),
+                ),
+              );
+              if (created == true) ref.invalidate(foldersProvider);
+            },
           ),
           FHeaderAction(
             icon: const Icon(FIcons.folderPlus),

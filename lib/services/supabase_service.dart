@@ -29,6 +29,17 @@ class SupabaseService {
     return Folder.fromMap(row);
   }
 
+  /// Returns the existing folder named [name] (case-insensitive), or creates
+  /// it if none exists yet — used to land custom exams in a "Custom" folder
+  /// without erroring if it's already there from a previous custom exam.
+  Future<Folder> findOrCreateFolder(String name) async {
+    final folders = await fetchFolders();
+    for (final folder in folders) {
+      if (folder.name.toLowerCase() == name.toLowerCase()) return folder;
+    }
+    return createFolder(name);
+  }
+
   // --- Question sets -----------------------------------------------------
 
   Future<List<QuestionSet>> fetchQuestionSets(String folderId) async {

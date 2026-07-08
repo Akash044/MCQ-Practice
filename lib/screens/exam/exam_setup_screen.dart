@@ -54,8 +54,12 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
 
   late final TextEditingController _marksController;
   late final TextEditingController _negativeMarksController;
-  final _examMinutesController = TextEditingController(text: '60');
-  final _perQuestionSecondsController = TextEditingController(text: '45');
+
+  // Exam-timer default (half of the total question count, i.e. ~30s/question)
+  // is filled in once the question count is known — see _buildForm.
+  final _examMinutesController = TextEditingController();
+  bool _examMinutesDefaultSet = false;
+  final _perQuestionSecondsController = TextEditingController(text: '20');
 
   @override
   void initState() {
@@ -218,6 +222,12 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
   }
 
   Widget _buildForm(List<Question> questions, List<AttemptAnswer> answers) {
+    if (!_examMinutesDefaultSet) {
+      _examMinutesDefaultSet = true;
+      _examMinutesController.text =
+          '${(questions.length / 2).ceil().clamp(1, 999)}';
+    }
+
     final wrongCount = QuestionPools.wrongPool(questions, answers).length;
     final skippedCount = QuestionPools.skippedPool(questions, answers).length;
 

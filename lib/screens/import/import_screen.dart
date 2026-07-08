@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/services.dart' show Clipboard;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
@@ -10,6 +10,27 @@ import '../../models/folder.dart';
 import '../../providers/supabase_providers.dart';
 import '../../utils/network_error.dart';
 import '../../utils/question_set_validator.dart';
+
+/// Shown to the user (and copyable) so they can hand it to an AI/LLM as the
+/// exact format to generate — kept in sync with QuestionSetValidator's rules
+/// and docs/PRD.md section 4. `id`, `explanation`, `topic`, and `difficulty`
+/// are optional; everything else is required.
+const jsonFormatExample = '''
+{
+  "exam_title": "Fluid Dynamics - Chapter 3",
+  "subject": "Fluid Dynamics",
+  "questions": [
+    {
+      "id": "q1",
+      "question": "What is the SI unit of dynamic viscosity?",
+      "options": ["Pa", "Pa·s", "N/m", "m²/s"],
+      "correct_answer": 1,
+      "explanation": "Dynamic viscosity is measured in Pascal-seconds (Pa·s).",
+      "topic": "Viscosity",
+      "difficulty": "medium"
+    }
+  ]
+}''';
 
 class ImportScreen extends ConsumerStatefulWidget {
   const ImportScreen({super.key, required this.folder});
@@ -26,6 +47,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   bool _loading = false;
   bool _importing = false;
   String? _loadError;
+  bool _showFormat = false;
 
   Future<void> _processJsonText(String text, {String? fileName}) async {
     setState(() {
@@ -193,6 +215,19 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            FButton(
+              variant: FButtonVariant.ghost,
+              prefix: const Icon(FIcons.braces),
+              onPress: () => setState(() => _showFormat = !_showFormat),
+              child: Text(
+                _showFormat ? 'Hide JSON format' : 'View JSON format',
+              ),
+            ),
+            if (_showFormat) ...[
+              const SizedBox(height: 8),
+              _buildFormatCard(context),
+            ],
             const SizedBox(height: 16),
             if (_loading) const Center(child: FCircularProgress()),
             if (_loadError != null)
@@ -204,6 +239,46 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
             if (result != null) Expanded(child: _buildResult(context, result)),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildFormatCard(BuildContext context) {
+    return FCard(
+      title: const Text('Expected JSON format'),
+      subtitle: const Text(
+        'Paste this to an AI along with your source material and ask it to fill it in.',
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 220),
+            child: SingleChildScrollView(
+              child: Text(
+                jsonFormatExample,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          FButton(
+            variant: FButtonVariant.outline,
+            prefix: const Icon(FIcons.copy),
+            onPress: () async {
+              await Clipboard.setData(
+                const ClipboardData(text: jsonFormatExample),
+              );
+              if (context.mounted) {
+                showFToast(
+                  context: context,
+                  title: const Text('Copied to clipboard'),
+                );
+              }
+            },
+            child: const Text('Copy'),
+          ),
+        ],
       ),
     );
   }
