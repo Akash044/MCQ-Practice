@@ -126,7 +126,11 @@ class _QuestionSetListScreenState
                       padding: const EdgeInsets.only(bottom: 8),
                       child: FTile(
                         prefix: const Icon(FIcons.listChecks),
-                        title: Text(set.title),
+                        title: Text(
+                          set.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         subtitle: set.subject != null
                             ? Text(set.subject!)
                             : null,

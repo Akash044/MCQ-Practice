@@ -281,15 +281,27 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
       children: [
         Text('Mode', style: context.theme.typography.sm),
         const SizedBox(height: 8),
-        FRadio(
-          value: _mode == AttemptMode.practice,
-          onChange: (_) => setState(() => _mode = AttemptMode.practice),
-          label: const Text('Practice (instant feedback)'),
-        ),
-        FRadio(
-          value: _mode == AttemptMode.test,
-          onChange: (_) => setState(() => _mode = AttemptMode.test),
-          label: const Text('Test (score at the end)'),
+        FTileGroup(
+          children: [
+            FTile(
+              prefix: FRadio(
+                value: _mode == AttemptMode.practice,
+                onChange: (_) => setState(() => _mode = AttemptMode.practice),
+              ),
+              title: const Text('Practice (instant feedback)'),
+              selected: _mode == AttemptMode.practice,
+              onPress: () => setState(() => _mode = AttemptMode.practice),
+            ),
+            FTile(
+              prefix: FRadio(
+                value: _mode == AttemptMode.test,
+                onChange: (_) => setState(() => _mode = AttemptMode.test),
+              ),
+              title: const Text('Test (score at the end)'),
+              selected: _mode == AttemptMode.test,
+              onPress: () => setState(() => _mode = AttemptMode.test),
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         if (widget.preselectedQuestionIds != null) ...[
@@ -309,22 +321,43 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
         ] else ...[
           Text('Source', style: context.theme.typography.sm),
           const SizedBox(height: 8),
-          FRadio(
-            value: _sourceType == AttemptSourceType.fullSet,
-            onChange: (_) => selectSource(AttemptSourceType.fullSet),
-            label: Text('Full set (${questions.length})'),
-          ),
-          FRadio(
-            value: _sourceType == AttemptSourceType.wrongAnswersRetry,
-            enabled: wrongCount > 0,
-            onChange: (_) => selectSource(AttemptSourceType.wrongAnswersRetry),
-            label: Text('Wrong answers ($wrongCount)'),
-          ),
-          FRadio(
-            value: _sourceType == AttemptSourceType.skippedRetry,
-            enabled: skippedCount > 0,
-            onChange: (_) => selectSource(AttemptSourceType.skippedRetry),
-            label: Text('Skipped questions ($skippedCount)'),
+          FTileGroup(
+            children: [
+              FTile(
+                prefix: FRadio(
+                  value: _sourceType == AttemptSourceType.fullSet,
+                  onChange: (_) => selectSource(AttemptSourceType.fullSet),
+                ),
+                title: Text('Full set (${questions.length})'),
+                selected: _sourceType == AttemptSourceType.fullSet,
+                onPress: () => selectSource(AttemptSourceType.fullSet),
+              ),
+              FTile(
+                prefix: FRadio(
+                  value: _sourceType == AttemptSourceType.wrongAnswersRetry,
+                  enabled: wrongCount > 0,
+                  onChange: (_) =>
+                      selectSource(AttemptSourceType.wrongAnswersRetry),
+                ),
+                title: Text('Wrong answers ($wrongCount)'),
+                enabled: wrongCount > 0,
+                selected: _sourceType == AttemptSourceType.wrongAnswersRetry,
+                onPress: () =>
+                    selectSource(AttemptSourceType.wrongAnswersRetry),
+              ),
+              FTile(
+                prefix: FRadio(
+                  value: _sourceType == AttemptSourceType.skippedRetry,
+                  enabled: skippedCount > 0,
+                  onChange: (_) =>
+                      selectSource(AttemptSourceType.skippedRetry),
+                ),
+                title: Text('Skipped questions ($skippedCount)'),
+                enabled: skippedCount > 0,
+                selected: _sourceType == AttemptSourceType.skippedRetry,
+                onPress: () => selectSource(AttemptSourceType.skippedRetry),
+              ),
+            ],
           ),
           if (wrongCount > 0 || skippedCount > 0) ...[
             const SizedBox(height: 8),

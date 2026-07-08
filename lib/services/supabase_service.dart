@@ -116,13 +116,12 @@ class SupabaseService {
     return rows.map((row) => Question.fromMap(row)).toList();
   }
 
-  Future<Question> addQuestion(Question question) async {
-    final row = await _client
+  Future<List<Question>> addQuestions(List<Question> questions) async {
+    final rows = await _client
         .from('questions')
-        .insert(question.toInsertMap())
-        .select()
-        .single();
-    return Question.fromMap(row);
+        .insert(questions.map((q) => q.toInsertMap()).toList())
+        .select();
+    return rows.map((row) => Question.fromMap(row)).toList();
   }
 
   Future<void> deleteQuestion(String questionId) async {

@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart' show MaterialPageRoute;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
@@ -8,21 +11,38 @@ import '../../models/question_set.dart';
 import '../../providers/exam_providers.dart';
 import '../../providers/supabase_providers.dart';
 import '../../utils/network_error.dart';
+import '../../utils/question_set_validator.dart';
 import '../../widgets/error_state.dart';
 
-/// Lets an existing exam's question list be edited directly — adding new
-/// questions by hand and deleting ones that no longer belong — without
-/// having to re-import the whole set as JSON.
+/// Shown to the user (and copyable) so they can hand it to an AI/LLM as the
+/// exact format to generate for new questions — same per-question shape as
+/// the full JSON import (see import_screen.dart's `jsonFormatExample`) minus
+/// the exam-level wrapper, since these are being added to an existing set.
+const _questionJsonFormatExample = '''
+[
+  {
+    "question": "What is the SI unit of dynamic viscosity?",
+    "options": ["Pa", "Pa·s", "N/m", "m²/s"],
+    "correct_answer": 1,
+    "explanation": "Dynamic viscosity is measured in Pascal-seconds (Pa·s).",
+    "topic": "Viscosity",
+    "difficulty": "medium"
+  }
+]''';
+
+/// Lets an existing exam's question list be edited directly — pasting more
+/// questions in as JSON, and deleting ones that no longer belong — without
+/// having to re-import the whole set from scratch.
 class ManageQuestionsScreen extends ConsumerWidget {
   const ManageQuestionsScreen({super.key, required this.questionSet});
 
   final QuestionSet questionSet;
 
-  Future<void> _addQuestion(BuildContext context, WidgetRef ref) async {
+  Future<void> _addQuestions(BuildContext context, WidgetRef ref) async {
     final added = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (context) => _AddQuestionScreen(questionSet: questionSet),
+        builder: (context) => _AddQuestionsScreen(questionSet: questionSet),
       ),
     );
     if (added == true) {
@@ -89,7 +109,7 @@ class ManageQuestionsScreen extends ConsumerWidget {
         suffixes: [
           FHeaderAction(
             icon: const Icon(FIcons.plus),
-            onPress: () => _addQuestion(context, ref),
+            onPress: () => _addQuestions(context, ref),
           ),
         ],
       ),
@@ -110,8 +130,8 @@ class ManageQuestionsScreen extends ConsumerWidget {
                     const SizedBox(height: 12),
                     FButton(
                       prefix: const Icon(FIcons.plus),
-                      onPress: () => _addQuestion(context, ref),
-                      child: const Text('Add a question'),
+                      onPress: () => _addQuestions(context, ref),
+                      child: const Text('Add questions'),
                     ),
                   ],
                 ),
@@ -178,111 +198,82 @@ class ManageQuestionsScreen extends ConsumerWidget {
   }
 }
 
-/// Simple hand-entry form for a single question, reusing the same fields
-/// JSON import supports (docs/PRD.md section 4) minus source_id.
-class _AddQuestionScreen extends ConsumerStatefulWidget {
-  const _AddQuestionScreen({required this.questionSet});
+/// Adds one or more questions to an existing exam by pasting JSON — the same
+/// per-question shape the full-set import accepts (docs/PRD.md section 4),
+/// either as a single object or an array of several.
+class _AddQuestionsScreen extends ConsumerStatefulWidget {
+  const _AddQuestionsScreen({required this.questionSet});
 
   final QuestionSet questionSet;
 
   @override
-  ConsumerState<_AddQuestionScreen> createState() =>
-      _AddQuestionScreenState();
+  ConsumerState<_AddQuestionsScreen> createState() =>
+      _AddQuestionsScreenState();
 }
 
-class _AddQuestionScreenState extends ConsumerState<_AddQuestionScreen> {
-  final _questionController = TextEditingController();
-  final _explanationController = TextEditingController();
-  final _topicController = TextEditingController();
-  final _difficultyController = TextEditingController();
-  final List<TextEditingController> _optionControllers = [
-    TextEditingController(),
-    TextEditingController(),
-    TextEditingController(),
-    TextEditingController(),
-  ];
-  int _correctAnswer = 0;
+class _AddQuestionsScreenState extends ConsumerState<_AddQuestionsScreen> {
+  final _jsonController = TextEditingController();
+  QuestionListValidationResult? _result;
+  String? _parseError;
+  bool _showFormat = false;
   bool _saving = false;
 
   @override
   void dispose() {
-    _questionController.dispose();
-    _explanationController.dispose();
-    _topicController.dispose();
-    _difficultyController.dispose();
-    for (final c in _optionControllers) {
-      c.dispose();
-    }
+    _jsonController.dispose();
     super.dispose();
   }
 
-  void _addOption() {
-    setState(() => _optionControllers.add(TextEditingController()));
+  Future<void> _pasteFromClipboard() async {
+    try {
+      final clip = await Clipboard.getData('text/plain');
+      if (clip?.text != null) {
+        _jsonController.text = clip!.text!;
+        _validate(clip.text!);
+      }
+    } catch (_) {
+      // Clipboard access can fail on some platforms; the text field is still
+      // editable manually.
+    }
   }
 
-  void _removeOption(int index) {
-    setState(() {
-      _optionControllers.removeAt(index).dispose();
-      if (_correctAnswer >= _optionControllers.length) {
-        _correctAnswer = _optionControllers.length - 1;
-      }
-    });
+  void _validate(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      setState(() {
+        _parseError = null;
+        _result = null;
+      });
+      return;
+    }
+    try {
+      final decoded = jsonDecode(trimmed);
+      final rawList = decoded is List ? decoded : [decoded];
+      setState(() {
+        _parseError = null;
+        _result = validateQuestionList(
+          rawList,
+          questionSetId: widget.questionSet.id,
+        );
+      });
+    } catch (e) {
+      setState(() {
+        _parseError = 'Failed to parse JSON: $e';
+        _result = null;
+      });
+    }
   }
 
   Future<void> _save() async {
-    final questionText = _questionController.text.trim();
-    final options = _optionControllers
-        .map((c) => c.text.trim())
-        .where((t) => t.isNotEmpty)
-        .toList();
-
-    if (questionText.isEmpty) {
-      showFToast(
-        context: context,
-        variant: FToastVariant.destructive,
-        title: const Text('Enter the question text'),
-      );
-      return;
-    }
-    if (options.length < 2) {
-      showFToast(
-        context: context,
-        variant: FToastVariant.destructive,
-        title: const Text('Enter at least 2 non-empty options'),
-      );
-      return;
-    }
-    if (_correctAnswer < 0 || _correctAnswer >= options.length) {
-      showFToast(
-        context: context,
-        variant: FToastVariant.destructive,
-        title: const Text('Pick a valid correct answer'),
-      );
-      return;
-    }
+    final result = _result;
+    if (result == null || !result.isValid) return;
 
     setState(() => _saving = true);
-    final question = Question(
-      id: '',
-      questionSetId: widget.questionSet.id,
-      questionText: questionText,
-      options: options,
-      correctAnswer: _correctAnswer,
-      explanation: _explanationController.text.trim().isEmpty
-          ? null
-          : _explanationController.text.trim(),
-      topic: _topicController.text.trim().isEmpty
-          ? null
-          : _topicController.text.trim(),
-      difficulty: _difficultyController.text.trim().isEmpty
-          ? null
-          : _difficultyController.text.trim(),
-      createdAt: DateTime.now(),
-    );
-
     try {
       await withConnectivityCheck(
-        () => ref.read(supabaseServiceProvider).addQuestion(question),
+        () => ref
+            .read(supabaseServiceProvider)
+            .addQuestions(result.validQuestions),
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -294,7 +285,7 @@ class _AddQuestionScreenState extends ConsumerState<_AddQuestionScreen> {
           title: Text(
             e is NoInternetException
                 ? 'No internet connection'
-                : 'Could not save question',
+                : 'Could not save questions',
           ),
           description: e is NoInternetException ? null : Text('$e'),
         );
@@ -304,9 +295,11 @@ class _AddQuestionScreenState extends ConsumerState<_AddQuestionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final result = _result;
+
     return FScaffold(
       header: FHeader.nested(
-        title: const Text('Add question'),
+        title: const Text('Add questions'),
         prefixes: [FHeaderAction.back(onPress: () => Navigator.pop(context))],
       ),
       child: SafeArea(
@@ -315,92 +308,122 @@ class _AddQuestionScreenState extends ConsumerState<_AddQuestionScreen> {
         child: ListView(
           children: [
             FTextField(
-              label: const Text('Question'),
-              maxLines: 3,
+              label: const Text('Question JSON'),
+              hint: 'Paste one question object, or an array of several',
+              maxLines: 10,
               control: FTextFieldControl.managed(
-                controller: _questionController,
+                controller: _jsonController,
+                onChange: (v) => _validate(v.text),
               ),
-            ),
-            const SizedBox(height: 12),
-            Text('Options', style: context.theme.typography.sm),
-            const SizedBox(height: 4),
-            Text(
-              'Tap the circle next to the correct option.',
-              style: context.theme.typography.xs,
             ),
             const SizedBox(height: 8),
-            for (var i = 0; i < _optionControllers.length; i++)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    FRadio(
-                      value: _correctAnswer == i,
-                      onChange: (_) => setState(() => _correctAnswer = i),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FTextField(
-                        hint: 'Option ${i + 1}',
-                        control: FTextFieldControl.managed(
-                          controller: _optionControllers[i],
-                        ),
-                      ),
-                    ),
-                    if (_optionControllers.length > 2)
-                      FButton(
-                        variant: FButtonVariant.ghost,
-                        size: FButtonSizeVariant.sm,
-                        onPress: () => _removeOption(i),
-                        child: const Icon(FIcons.x),
-                      ),
-                  ],
-                ),
-              ),
-            FButton(
-              variant: FButtonVariant.ghost,
-              prefix: const Icon(FIcons.plus),
-              onPress: _addOption,
-              child: const Text('Add option'),
-            ),
-            const SizedBox(height: 12),
-            FTextField(
-              label: const Text('Explanation (optional)'),
-              maxLines: 2,
-              control: FTextFieldControl.managed(
-                controller: _explanationController,
-              ),
-            ),
-            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
-                  child: FTextField(
-                    label: const Text('Topic (optional)'),
-                    control: FTextFieldControl.managed(
-                      controller: _topicController,
-                    ),
+                  child: FButton(
+                    variant: FButtonVariant.outline,
+                    prefix: const Icon(FIcons.clipboardPaste),
+                    onPress: _pasteFromClipboard,
+                    child: const Text('Paste from clipboard'),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: FTextField(
-                    label: const Text('Difficulty (optional)'),
-                    control: FTextFieldControl.managed(
-                      controller: _difficultyController,
-                    ),
+                  child: FButton(
+                    variant: FButtonVariant.ghost,
+                    prefix: const Icon(FIcons.braces),
+                    onPress: () => setState(() => _showFormat = !_showFormat),
+                    child: Text(_showFormat ? 'Hide format' : 'View format'),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            if (_showFormat) ...[
+              const SizedBox(height: 8),
+              _buildFormatCard(context),
+            ],
+            const SizedBox(height: 16),
+            if (_parseError != null)
+              FAlert(
+                variant: FAlertVariant.destructive,
+                title: const Text('Could not read JSON'),
+                subtitle: Text(_parseError!),
+              ),
+            if (result != null) ...[
+              Text(
+                '${result.validQuestions.length} valid question(s), '
+                '${result.errors.length} error(s)',
+              ),
+              if (result.errors.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                FTileGroup(
+                  children: [
+                    for (final e in result.errors)
+                      FTile(
+                        prefix: const Icon(FIcons.circleAlert),
+                        title: Text(e.toString()),
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 16),
+            ],
             FButton(
-              onPress: _saving ? null : _save,
+              onPress: (result?.isValid ?? false) && !_saving ? _save : null,
               prefix: _saving ? const FCircularProgress() : null,
-              child: const Text('Save question'),
+              child: Text(
+                result == null
+                    ? 'Paste JSON above to continue'
+                    : result.isValid
+                    ? 'Add ${result.validQuestions.length} question'
+                          '${result.validQuestions.length == 1 ? '' : 's'}'
+                    : 'Fix errors before adding',
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildFormatCard(BuildContext context) {
+    return FCard(
+      title: const Text('Expected JSON format'),
+      subtitle: const Text(
+        'Paste this to an AI along with your source material and ask it to '
+        'fill it in. A single question object (not wrapped in an array) '
+        'also works. "explanation", "topic", and "difficulty" are optional.',
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 220),
+            child: SingleChildScrollView(
+              child: Text(
+                _questionJsonFormatExample,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          FButton(
+            variant: FButtonVariant.outline,
+            prefix: const Icon(FIcons.copy),
+            onPress: () async {
+              await Clipboard.setData(
+                const ClipboardData(text: _questionJsonFormatExample),
+              );
+              if (context.mounted) {
+                showFToast(
+                  context: context,
+                  title: const Text('Copied to clipboard'),
+                );
+              }
+            },
+            child: const Text('Copy'),
+          ),
+        ],
       ),
     );
   }
