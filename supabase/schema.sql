@@ -9,6 +9,7 @@ create table folders (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   parent_id uuid references folders(id) on delete cascade,
+  position int not null default 0,  -- manual drag-order among siblings (same parent_id)
   created_at timestamptz default now()
 );
 

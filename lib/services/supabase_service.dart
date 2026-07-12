@@ -28,6 +28,7 @@ class SupabaseService {
         .from('folders')
         .select()
         .isFilter('parent_id', null)
+        .order('position', ascending: true)
         .order('name');
     return rows.map((row) => Folder.fromMap(row)).toList();
   }
@@ -38,17 +39,46 @@ class SupabaseService {
         .from('folders')
         .select()
         .eq('parent_id', parentId)
+        .order('position', ascending: true)
         .order('name');
     return rows.map((row) => Folder.fromMap(row)).toList();
   }
 
   Future<Folder> createFolder(String name, {String? parentId}) async {
+    final position = await _nextPositionAmongSiblings(parentId);
     final row = await _client
         .from('folders')
-        .insert({'name': name, 'parent_id': ?parentId})
+        .insert({'name': name, 'parent_id': ?parentId, 'position': position})
         .select()
         .single();
     return Folder.fromMap(row);
+  }
+
+  /// New folders are appended after whatever currently has the highest
+  /// `position` among siblings (same `parent_id`, including the root group
+  /// where it's null), so drag-reordering never has to touch existing rows
+  /// just because a new folder/subfolder was created.
+  Future<int> _nextPositionAmongSiblings(String? parentId) async {
+    var query = _client.from('folders').select('position');
+    query = parentId == null
+        ? query.isFilter('parent_id', null)
+        : query.eq('parent_id', parentId);
+    final rows = await query.order('position', ascending: false).limit(1);
+    if (rows.isEmpty) return 0;
+    return ((rows.first['position'] as int?) ?? 0) + 1;
+  }
+
+  /// Persists a drag-reorder of a set of sibling folders (either the root
+  /// folders on the home screen, or the subfolders within one parent).
+  /// [orderedFolderIds] must be the full, newly-ordered list of ids for that
+  /// sibling group — each gets its list index written back as its `position`.
+  Future<void> reorderFolders(List<String> orderedFolderIds) async {
+    for (var i = 0; i < orderedFolderIds.length; i++) {
+      await _client
+          .from('folders')
+          .update({'position': i})
+          .eq('id', orderedFolderIds[i]);
+    }
   }
 
   /// Returns the existing folder named [name] (case-insensitive), or creates

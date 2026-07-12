@@ -5,14 +5,13 @@ import 'package:forui/forui.dart';
 
 import '../../models/folder.dart';
 import '../../models/question_set.dart';
-import '../../providers/exam_providers.dart';
 import '../../providers/question_set_providers.dart';
 import '../../providers/supabase_providers.dart';
 import '../../widgets/error_state.dart';
-import '../../widgets/learning_curve_view.dart';
 import '../exam/exam_setup_screen.dart';
 import '../exam/manage_questions_screen.dart';
 import '../import/import_screen.dart';
+import '../progress/folder_progress_screen.dart';
 import 'create_subfolder_screen.dart';
 
 class QuestionSetListScreen extends ConsumerStatefulWidget {
@@ -27,9 +26,11 @@ class QuestionSetListScreen extends ConsumerStatefulWidget {
 
 class _QuestionSetListScreenState
     extends ConsumerState<QuestionSetListScreen> {
-  /// Local optimistic copy used while a drag-reorder is in flight, so the
-  /// list doesn't snap back to the old order for the round trip to Supabase.
+  /// Local optimistic copies used while a drag-reorder is in flight, so the
+  /// relevant list doesn't snap back to the old order for the round trip to
+  /// Supabase.
   List<QuestionSet>? _reordering;
+  List<Folder>? _reorderingFolders;
 
   Future<void> _import(BuildContext context, WidgetRef ref) async {
     final imported = await Navigator.push<bool>(
@@ -79,6 +80,28 @@ class _QuestionSetListScreenState
     }
   }
 
+  Future<void> _reorderFolders(
+    List<Folder> current,
+    int oldIndex,
+    int newIndex,
+  ) async {
+    if (newIndex > oldIndex) newIndex -= 1;
+    final updated = List.of(current);
+    final moved = updated.removeAt(oldIndex);
+    updated.insert(newIndex, moved);
+    setState(() => _reorderingFolders = updated);
+    try {
+      await ref
+          .read(supabaseServiceProvider)
+          .reorderFolders(updated.map((f) => f.id).toList());
+    } finally {
+      if (mounted) {
+        ref.invalidate(childFoldersProvider(widget.folder.id));
+        setState(() => _reorderingFolders = null);
+      }
+    }
+  }
+
   Future<void> _manageQuestions(QuestionSet set) async {
     await Navigator.push(
       context,
@@ -99,6 +122,17 @@ class _QuestionSetListScreenState
         title: Text(widget.folder.name),
         prefixes: [FHeaderAction.back(onPress: () => Navigator.pop(context))],
         suffixes: [
+          if (isSubfolder)
+            FHeaderAction(
+              icon: const Icon(FIcons.chartLine),
+              onPress: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      FolderProgressScreen(folder: widget.folder),
+                ),
+              ),
+            ),
           FHeaderAction(
             icon: const Icon(FIcons.folderPlus),
             onPress: () => _createSubfolder(context, ref),
@@ -117,8 +151,9 @@ class _QuestionSetListScreenState
           loading: () => const Center(child: FCircularProgress()),
           error: (err, stack) =>
               ErrorState(error: err, label: 'Failed to load subfolders'),
-          data: (subfolders) {
+          data: (fetchedSubfolders) {
             final sets = _reordering ?? fetched;
+            final subfolders = _reorderingFolders ?? fetchedSubfolders;
             if (sets.isEmpty && subfolders.isEmpty) {
               return const Center(
                 child: Text(
@@ -129,17 +164,50 @@ class _QuestionSetListScreenState
             }
             return CustomScrollView(
               slivers: [
-                if (isSubfolder)
+                if (subfolders.isNotEmpty) ...[
                   SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 20),
-                      child: _SubfolderLearningCurve(folder: widget.folder),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text('Subfolders', style: context.theme.typography.sm),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Press and hold a subfolder, then drag to reorder.',
+                          style: context.theme.typography.xs,
+                        ),
+                        const SizedBox(height: 8),
+                      ],
                     ),
                   ),
-                if (subfolders.isNotEmpty)
-                  SliverToBoxAdapter(
-                    child: _buildSubfoldersSection(context, subfolders),
+                  SliverReorderableList(
+                    itemCount: subfolders.length,
+                    onReorder: (oldIndex, newIndex) =>
+                        _reorderFolders(subfolders, oldIndex, newIndex),
+                    itemBuilder: (context, index) {
+                      final sub = subfolders[index];
+                      return ReorderableDelayedDragStartListener(
+                        key: ValueKey(sub.id),
+                        index: index,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: FTile(
+                            prefix: const Icon(FIcons.folder),
+                            title: Text(sub.name),
+                            suffix: const Icon(FIcons.chevronRight),
+                            onPress: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    QuestionSetListScreen(folder: sub),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                ],
                 if (sets.isNotEmpty) ...[
                   SliverToBoxAdapter(
                     child: Padding(
@@ -222,92 +290,6 @@ class _QuestionSetListScreenState
               ],
             );
           },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSubfoldersSection(BuildContext context, List<Folder> subfolders) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Subfolders', style: context.theme.typography.sm),
-          const SizedBox(height: 8),
-          FTileGroup(
-            children: [
-              for (final sub in subfolders)
-                FTile(
-                  prefix: const Icon(FIcons.folder),
-                  title: Text(sub.name),
-                  suffix: const Icon(FIcons.chevronRight),
-                  onPress: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => QuestionSetListScreen(folder: sub),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Aggregated learning curve across every exam currently moved into
-/// [folder] — only rendered when [folder] is itself a subfolder, per the
-/// "show learning curve subfolder-wise when opened" requirement.
-class _SubfolderLearningCurve extends ConsumerWidget {
-  const _SubfolderLearningCurve({required this.folder});
-
-  final Folder folder;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final attemptsAsync = ref.watch(folderAttemptHistoryProvider(folder.id));
-    final answersAsync = ref.watch(folderAnswersProvider(folder.id));
-    final questionsAsync = ref.watch(folderQuestionsProvider(folder.id));
-    final setsAsync = ref.watch(questionSetsProvider(folder.id));
-
-    return attemptsAsync.when(
-      loading: () => const Center(child: FCircularProgress()),
-      error: (err, stack) =>
-          ErrorState(error: err, label: 'Failed to load attempts'),
-      data: (attempts) => answersAsync.when(
-        loading: () => const Center(child: FCircularProgress()),
-        error: (err, stack) =>
-            ErrorState(error: err, label: 'Failed to load answers'),
-        data: (answers) => questionsAsync.when(
-          loading: () => const Center(child: FCircularProgress()),
-          error: (err, stack) =>
-              ErrorState(error: err, label: 'Failed to load questions'),
-          data: (questions) => setsAsync.when(
-            loading: () => const Center(child: FCircularProgress()),
-            error: (err, stack) =>
-                ErrorState(error: err, label: 'Failed to load exams'),
-            data: (sets) => Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('Learning curve', style: context.theme.typography.lg),
-                const SizedBox(height: 12),
-                LearningCurveView(
-                  folder: folder,
-                  attempts: attempts,
-                  answers: answers,
-                  questions: questions,
-                  setById: {for (final s in sets) s.id: s},
-                  showExamLabel: sets.length > 1,
-                  onAttemptDeleted: () {
-                    ref.invalidate(folderAttemptHistoryProvider(folder.id));
-                    ref.invalidate(folderAnswersProvider(folder.id));
-                  },
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );
