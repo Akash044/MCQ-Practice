@@ -50,6 +50,22 @@ class ManageQuestionsScreen extends ConsumerWidget {
     }
   }
 
+  Future<void> _editQuestion(
+    BuildContext context,
+    WidgetRef ref,
+    Question question,
+  ) async {
+    final edited = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => _EditQuestionScreen(question: question),
+      ),
+    );
+    if (edited == true) {
+      ref.invalidate(questionsForSetProvider(questionSet.id));
+    }
+  }
+
   Future<void> _deleteQuestion(
     BuildContext context,
     WidgetRef ref,
@@ -182,15 +198,25 @@ class ManageQuestionsScreen extends ConsumerWidget {
                     : null,
               ),
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FButton(
-                variant: FButtonVariant.destructive,
-                size: FButtonSizeVariant.sm,
-                prefix: const Icon(FIcons.trash2),
-                onPress: () => _deleteQuestion(context, ref, q),
-                child: const Text('Delete'),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                FButton(
+                  variant: FButtonVariant.outline,
+                  size: FButtonSizeVariant.sm,
+                  prefix: const Icon(FIcons.pencil),
+                  onPress: () => _editQuestion(context, ref, q),
+                  child: const Text('Edit'),
+                ),
+                const SizedBox(width: 8),
+                FButton(
+                  variant: FButtonVariant.destructive,
+                  size: FButtonSizeVariant.sm,
+                  prefix: const Icon(FIcons.trash2),
+                  onPress: () => _deleteQuestion(context, ref, q),
+                  child: const Text('Delete'),
+                ),
+              ],
             ),
           ],
         ),
@@ -425,6 +451,181 @@ class _AddQuestionsScreenState extends ConsumerState<_AddQuestionsScreen> {
             child: const Text('Copy'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Edits a single existing question by pasting a corrected JSON object —
+/// same per-question shape as [_AddQuestionsScreen], pre-filled with the
+/// question's current fields so a small tweak doesn't require retyping
+/// everything. The question's id, source_id, and created_at are carried
+/// over untouched; only the fields present in the JSON shape are replaced.
+class _EditQuestionScreen extends ConsumerStatefulWidget {
+  const _EditQuestionScreen({required this.question});
+
+  final Question question;
+
+  @override
+  ConsumerState<_EditQuestionScreen> createState() =>
+      _EditQuestionScreenState();
+}
+
+class _EditQuestionScreenState extends ConsumerState<_EditQuestionScreen> {
+  static const _encoder = JsonEncoder.withIndent('  ');
+
+  late final _jsonController = TextEditingController(text: _seedJson());
+  QuestionListValidationResult? _result;
+  String? _parseError;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _validate(_jsonController.text);
+  }
+
+  @override
+  void dispose() {
+    _jsonController.dispose();
+    super.dispose();
+  }
+
+  String _seedJson() {
+    final q = widget.question;
+    return _encoder.convert({
+      'question': q.questionText,
+      'options': q.options,
+      'correct_answer': q.correctAnswer,
+      if (q.explanation != null) 'explanation': q.explanation,
+      if (q.topic != null) 'topic': q.topic,
+      if (q.difficulty != null) 'difficulty': q.difficulty,
+    });
+  }
+
+  void _validate(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      setState(() {
+        _parseError = null;
+        _result = null;
+      });
+      return;
+    }
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is List) {
+        setState(() {
+          _parseError = 'Only one question can be edited at a time.';
+          _result = null;
+        });
+        return;
+      }
+      setState(() {
+        _parseError = null;
+        _result = validateQuestionList(
+          [decoded],
+          questionSetId: widget.question.questionSetId,
+        );
+      });
+    } catch (e) {
+      setState(() {
+        _parseError = 'Failed to parse JSON: $e';
+        _result = null;
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    final result = _result;
+    if (result == null || !result.isValid) return;
+    final parsed = result.validQuestions.single;
+    final updated = Question(
+      id: widget.question.id,
+      questionSetId: widget.question.questionSetId,
+      sourceId: widget.question.sourceId,
+      questionText: parsed.questionText,
+      options: parsed.options,
+      correctAnswer: parsed.correctAnswer,
+      explanation: parsed.explanation,
+      topic: parsed.topic,
+      difficulty: parsed.difficulty,
+      createdAt: widget.question.createdAt,
+    );
+
+    setState(() => _saving = true);
+    try {
+      await withConnectivityCheck(
+        () => ref.read(supabaseServiceProvider).updateQuestion(updated),
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      setState(() => _saving = false);
+      if (mounted) {
+        showFToast(
+          context: context,
+          variant: FToastVariant.destructive,
+          title: Text(
+            e is NoInternetException
+                ? 'No internet connection'
+                : 'Could not save changes',
+          ),
+          description: e is NoInternetException ? null : Text('$e'),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final result = _result;
+
+    return FScaffold(
+      header: FHeader.nested(
+        title: const Text('Edit question'),
+        prefixes: [FHeaderAction.back(onPress: () => Navigator.pop(context))],
+      ),
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 12),
+        child: ListView(
+          children: [
+            FTextField(
+              label: const Text('Question JSON'),
+              maxLines: 12,
+              control: FTextFieldControl.managed(
+                controller: _jsonController,
+                onChange: (v) => _validate(v.text),
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_parseError != null)
+              FAlert(
+                variant: FAlertVariant.destructive,
+                title: const Text('Could not read JSON'),
+                subtitle: Text(_parseError!),
+              ),
+            if (result != null) ...[
+              if (result.errors.isNotEmpty) ...[
+                FTileGroup(
+                  children: [
+                    for (final e in result.errors)
+                      FTile(
+                        prefix: const Icon(FIcons.circleAlert),
+                        title: Text(e.toString()),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
+            ],
+            FButton(
+              onPress: (result?.isValid ?? false) && !_saving ? _save : null,
+              prefix: _saving ? const FCircularProgress() : null,
+              child: const Text('Save changes'),
+            ),
+          ],
+        ),
       ),
     );
   }

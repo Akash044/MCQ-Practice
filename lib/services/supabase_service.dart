@@ -161,6 +161,16 @@ class SupabaseService {
     await _client.from('questions').delete().eq('id', questionId);
   }
 
+  Future<Question> updateQuestion(Question question) async {
+    final row = await _client
+        .from('questions')
+        .update(question.toInsertMap())
+        .eq('id', question.id)
+        .select()
+        .single();
+    return Question.fromMap(row);
+  }
+
   // --- Reordering (question_sets.position) --------------------------------
 
   /// New sets are appended after whatever currently has the highest
