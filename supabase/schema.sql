@@ -62,7 +62,7 @@ create table attempts (
 create table attempt_answers (
   id uuid primary key default gen_random_uuid(),
   attempt_id uuid references attempts(id) on delete cascade,
-  question_id uuid references questions(id),
+  question_id uuid references questions(id) on delete cascade,
   selected_answer int,             -- null when skipped
   status text check (status in ('correct','incorrect','skipped')) not null,
   time_taken_seconds int,

@@ -20,6 +20,28 @@ class SupabaseService {
     return rows.map((row) => Folder.fromMap(row)).toList();
   }
 
+  /// Top-level folders only (subjects), for the home screen — subfolders
+  /// (chapters) are fetched separately via [fetchChildFolders] so they only
+  /// ever show up nested inside their parent.
+  Future<List<Folder>> fetchRootFolders() async {
+    final rows = await _client
+        .from('folders')
+        .select()
+        .isFilter('parent_id', null)
+        .order('name');
+    return rows.map((row) => Folder.fromMap(row)).toList();
+  }
+
+  /// Subfolders (chapters) directly under [parentId].
+  Future<List<Folder>> fetchChildFolders(String parentId) async {
+    final rows = await _client
+        .from('folders')
+        .select()
+        .eq('parent_id', parentId)
+        .order('name');
+    return rows.map((row) => Folder.fromMap(row)).toList();
+  }
+
   Future<Folder> createFolder(String name, {String? parentId}) async {
     final row = await _client
         .from('folders')
@@ -116,6 +138,17 @@ class SupabaseService {
     return rows.map((row) => Question.fromMap(row)).toList();
   }
 
+  /// Combined question list across several exams — feeds the per-topic and
+  /// weak-spot breakdowns of a subfolder's aggregated learning curve.
+  Future<List<Question>> fetchQuestionsForSets(List<String> setIds) async {
+    if (setIds.isEmpty) return [];
+    final rows = await _client
+        .from('questions')
+        .select()
+        .inFilter('question_set_id', setIds);
+    return rows.map((row) => Question.fromMap(row)).toList();
+  }
+
   Future<List<Question>> addQuestions(List<Question> questions) async {
     final rows = await _client
         .from('questions')
@@ -153,6 +186,26 @@ class SupabaseService {
           .from('question_sets')
           .update({'position': i})
           .eq('id', orderedSetIds[i]);
+    }
+  }
+
+  /// Moves the given exams into [targetFolderId] — used when picking existing
+  /// exams to include in a newly-created subfolder (chapter). Each exam still
+  /// belongs to exactly one folder, so this reassigns `folder_id` rather than
+  /// creating a second link; the exams disappear from their old folder's list
+  /// and only show up under the subfolder from then on. Repositioned to
+  /// append after whatever's already in the target, same as a fresh import.
+  Future<void> moveQuestionSetsToFolder(
+    List<String> setIds,
+    String targetFolderId,
+  ) async {
+    var position = await _nextPositionInFolder(targetFolderId);
+    for (final setId in setIds) {
+      await _client
+          .from('question_sets')
+          .update({'folder_id': targetFolderId, 'position': position})
+          .eq('id', setId);
+      position++;
     }
   }
 
@@ -198,6 +251,18 @@ class SupabaseService {
     return rows.map((row) => Attempt.fromMap(row)).toList();
   }
 
+  /// Combined attempt history across several exams — used for a subfolder's
+  /// aggregated learning curve, which spans every exam moved into it.
+  Future<List<Attempt>> fetchAttemptHistoryForSets(List<String> setIds) async {
+    if (setIds.isEmpty) return [];
+    final rows = await _client
+        .from('attempts')
+        .select()
+        .inFilter('question_set_id', setIds)
+        .order('started_at', ascending: false);
+    return rows.map((row) => Attempt.fromMap(row)).toList();
+  }
+
   /// `attempt_answers` rows cascade-delete via their `attempt_id` foreign key
   /// (see supabase/schema.sql), so deleting the attempt is enough.
   Future<void> deleteAttempt(String attemptId) async {
@@ -215,6 +280,20 @@ class SupabaseService {
         .from('attempt_answers')
         .select('*, attempts!inner(question_set_id)')
         .eq('attempts.question_set_id', questionSetId)
+        .order('answered_at');
+    return rows.map((row) => AttemptAnswer.fromMap(row)).toList();
+  }
+
+  /// Combined answer history across several exams — feeds a subfolder's
+  /// aggregated learning curve the same derived views a single exam gets.
+  Future<List<AttemptAnswer>> fetchAllAnswersForSets(
+    List<String> setIds,
+  ) async {
+    if (setIds.isEmpty) return [];
+    final rows = await _client
+        .from('attempt_answers')
+        .select('*, attempts!inner(question_set_id)')
+        .inFilter('attempts.question_set_id', setIds)
         .order('answered_at');
     return rows.map((row) => AttemptAnswer.fromMap(row)).toList();
   }

@@ -93,6 +93,7 @@ class ManageQuestionsScreen extends ConsumerWidget {
                 ? 'No internet connection'
                 : 'Could not delete question',
           ),
+          description: e is NoInternetException ? null : Text('$e'),
         );
       }
     }

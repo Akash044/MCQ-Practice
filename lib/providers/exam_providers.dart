@@ -5,12 +5,17 @@ import '../models/attempt_answer.dart';
 import '../models/question.dart';
 import '../services/local_db.dart';
 import '../utils/network_error.dart';
+import 'question_set_providers.dart';
 import 'supabase_providers.dart';
 
 /// Fetches a set's questions from Supabase and refreshes the local cache on
-/// success; if the network call fails (offline), falls back to whatever was
-/// last cached so a previously-loaded set can still be retaken (docs/PRD.md
-/// section 8: exams should be takeable offline once questions are loaded).
+/// success; if the network call fails because the device is offline, falls
+/// back to whatever was last cached so a previously-loaded set can still be
+/// retaken (docs/PRD.md section 8). Any other error (a real API/DB error) is
+/// rethrown instead of being masked by a stale cache hit — otherwise, e.g., a
+/// question add/delete whose subsequent refetch hits a transient error would
+/// silently keep showing the pre-mutation list with no indication anything
+/// went wrong.
 final questionsForSetProvider = FutureProvider.family<List<Question>, String>((
   ref,
   setId,
@@ -20,10 +25,14 @@ final questionsForSetProvider = FutureProvider.family<List<Question>, String>((
     final questions = await service.fetchQuestions(setId);
     await LocalDb.cacheQuestions(setId, questions);
     return questions;
-  } catch (e) {
-    final cached = await LocalDb.getCachedQuestions(setId);
-    if (cached.isNotEmpty) return cached;
-    return withConnectivityCheck(() => Future<List<Question>>.error(e));
+  } on Object catch (e) {
+    try {
+      await withConnectivityCheck(() => Future<void>.error(e));
+    } on NoInternetException {
+      final cached = await LocalDb.getCachedQuestions(setId);
+      if (cached.isNotEmpty) return cached;
+    }
+    rethrow;
   }
 });
 
@@ -40,5 +49,43 @@ final attemptHistoryProvider = FutureProvider.family<List<Attempt>, String>((
 ) async {
   return withConnectivityCheck(
     () => ref.watch(supabaseServiceProvider).fetchAttemptHistory(setId),
+  );
+});
+
+/// Aggregated versions of the three providers above, spanning every exam
+/// that's been moved into a subfolder — feed that subfolder's own learning
+/// curve (docs the "chapter" grouping's per-subfolder progress view).
+
+final folderAttemptHistoryProvider =
+    FutureProvider.family<List<Attempt>, String>((ref, folderId) async {
+      final sets = await ref.watch(questionSetsProvider(folderId).future);
+      return withConnectivityCheck(
+        () => ref
+            .watch(supabaseServiceProvider)
+            .fetchAttemptHistoryForSets(sets.map((s) => s.id).toList()),
+      );
+    });
+
+final folderAnswersProvider = FutureProvider.family<List<AttemptAnswer>, String>((
+  ref,
+  folderId,
+) async {
+  final sets = await ref.watch(questionSetsProvider(folderId).future);
+  return withConnectivityCheck(
+    () => ref
+        .watch(supabaseServiceProvider)
+        .fetchAllAnswersForSets(sets.map((s) => s.id).toList()),
+  );
+});
+
+final folderQuestionsProvider = FutureProvider.family<List<Question>, String>((
+  ref,
+  folderId,
+) async {
+  final sets = await ref.watch(questionSetsProvider(folderId).future);
+  return withConnectivityCheck(
+    () => ref
+        .watch(supabaseServiceProvider)
+        .fetchQuestionsForSets(sets.map((s) => s.id).toList()),
   );
 });
