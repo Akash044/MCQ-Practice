@@ -69,6 +69,55 @@ class _FolderListScreenState extends ConsumerState<FolderListScreen> {
     }
   }
 
+  Future<void> _renameFolder(
+    BuildContext context,
+    WidgetRef ref,
+    Folder folder,
+  ) async {
+    final controller = TextEditingController(text: folder.name);
+    final name = await showFDialog<String>(
+      context: context,
+      builder: (context, style, animation) => FDialog(
+        title: const Text('Rename Folder'),
+        body: FTextField(
+          autofocus: true,
+          hint: 'e.g. BCS Model Test',
+          control: FTextFieldControl.managed(controller: controller),
+        ),
+        actions: [
+          FButton(
+            variant: FButtonVariant.outline,
+            onPress: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FButton(
+            onPress: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty || name == folder.name) return;
+    try {
+      await withConnectivityCheck(
+        () => ref.read(supabaseServiceProvider).renameFolder(folder.id, name),
+      );
+      ref.invalidate(foldersProvider);
+    } catch (e) {
+      if (context.mounted) {
+        showFToast(
+          context: context,
+          variant: FToastVariant.destructive,
+          title: Text(
+            e is NoInternetException
+                ? 'No internet connection'
+                : 'Could not rename folder',
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _openCustomExamChooser(
     BuildContext context,
     WidgetRef ref,
@@ -201,7 +250,24 @@ class _FolderListScreenState extends ConsumerState<FolderListScreen> {
                             child: FTile(
                               prefix: const Icon(FIcons.folder),
                               title: Text(folder.name),
-                              suffix: const Icon(FIcons.chevronRight),
+                              suffix: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  GestureDetector(
+                                    onTap: () =>
+                                        _renameFolder(context, ref, folder),
+                                    child: const Padding(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                        vertical: 8,
+                                      ),
+                                      child: Icon(FIcons.pencil),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(FIcons.chevronRight),
+                                ],
+                              ),
                               onPress: () => Navigator.push(
                                 context,
                                 MaterialPageRoute(

@@ -12,6 +12,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'providers/theme_provider.dart';
+import 'providers/tts_providers.dart';
 import 'screens/folders/folder_list_screen.dart';
 import 'services/supabase_service.dart';
 import 'services/sync_service.dart';
@@ -48,12 +49,16 @@ Future<void> main() async {
 
   final prefs = await SharedPreferences.getInstance();
   final initialThemeMode = loadInitialThemeMode(prefs);
+  final initialTtsAnswerDelaySeconds = loadInitialTtsAnswerDelaySeconds(prefs);
 
   runApp(
     ProviderScope(
       overrides: [
         themeModeProvider.overrideWith(
           (ref) => ThemeModeNotifier(prefs, initialThemeMode),
+        ),
+        ttsAnswerDelaySecondsProvider.overrideWith(
+          (ref) => TtsAnswerDelayNotifier(prefs, initialTtsAnswerDelaySeconds),
         ),
       ],
       child: const McqApp(),

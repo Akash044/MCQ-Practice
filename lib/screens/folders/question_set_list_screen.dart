@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart' show MaterialPageRoute, ReorderableDelayedDragStartListener;
+import 'package:flutter/material.dart'
+    show MaterialPageRoute, ReorderableDelayedDragStartListener, TextInputType;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
@@ -7,8 +8,11 @@ import '../../models/folder.dart';
 import '../../models/question_set.dart';
 import '../../providers/question_set_providers.dart';
 import '../../providers/supabase_providers.dart';
+import '../../providers/tts_providers.dart';
+import '../../utils/network_error.dart';
 import '../../widgets/error_state.dart';
 import '../exam/exam_setup_screen.dart';
+import '../exam/listen_playback_screen.dart';
 import '../exam/manage_questions_screen.dart';
 import '../import/import_screen.dart';
 import '../progress/folder_progress_screen.dart';
@@ -62,6 +66,55 @@ class _QuestionSetListScreenState
     }
   }
 
+  Future<void> _renameFolder(
+    BuildContext context,
+    WidgetRef ref,
+    Folder folder,
+  ) async {
+    final controller = TextEditingController(text: folder.name);
+    final name = await showFDialog<String>(
+      context: context,
+      builder: (context, style, animation) => FDialog(
+        title: const Text('Rename Subfolder'),
+        body: FTextField(
+          autofocus: true,
+          hint: 'e.g. Chapter 1',
+          control: FTextFieldControl.managed(controller: controller),
+        ),
+        actions: [
+          FButton(
+            variant: FButtonVariant.outline,
+            onPress: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FButton(
+            onPress: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty || name == folder.name) return;
+    try {
+      await withConnectivityCheck(
+        () => ref.read(supabaseServiceProvider).renameFolder(folder.id, name),
+      );
+      ref.invalidate(childFoldersProvider(widget.folder.id));
+    } catch (e) {
+      if (context.mounted) {
+        showFToast(
+          context: context,
+          variant: FToastVariant.destructive,
+          title: Text(
+            e is NoInternetException
+                ? 'No internet connection'
+                : 'Could not rename subfolder',
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _reorder(List<QuestionSet> current, int oldIndex, int newIndex) async {
     if (newIndex > oldIndex) newIndex -= 1;
     final updated = List.of(current);
@@ -100,6 +153,48 @@ class _QuestionSetListScreenState
         setState(() => _reorderingFolders = null);
       }
     }
+  }
+
+  Future<void> _startListenMode(QuestionSet set) async {
+    final controller = TextEditingController(
+      text: '${ref.read(ttsAnswerDelaySecondsProvider)}',
+    );
+    final seconds = await showFDialog<int>(
+      context: context,
+      builder: (context, style, animation) => FDialog(
+        title: const Text('Listen & Answer'),
+        body: FTextField(
+          autofocus: true,
+          label: const Text('Seconds before the answer is read aloud'),
+          keyboardType: TextInputType.number,
+          control: FTextFieldControl.managed(controller: controller),
+        ),
+        actions: [
+          FButton(
+            variant: FButtonVariant.outline,
+            onPress: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FButton(
+            onPress: () =>
+                Navigator.pop(context, int.tryParse(controller.text.trim())),
+            child: const Text('Start'),
+          ),
+        ],
+      ),
+    );
+    if (seconds == null || seconds < 0 || !mounted) return;
+    ref.read(ttsAnswerDelaySecondsProvider.notifier).setSeconds(seconds);
+    if (!context.mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ListenPlaybackScreen(
+          questionSet: set,
+          answerDelaySeconds: seconds,
+        ),
+      ),
+    );
   }
 
   Future<void> _manageQuestions(QuestionSet set) async {
@@ -193,7 +288,24 @@ class _QuestionSetListScreenState
                           child: FTile(
                             prefix: const Icon(FIcons.folder),
                             title: Text(sub.name),
-                            suffix: const Icon(FIcons.chevronRight),
+                            suffix: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                GestureDetector(
+                                  onTap: () =>
+                                      _renameFolder(context, ref, sub),
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                      vertical: 8,
+                                    ),
+                                    child: Icon(FIcons.pencil),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(FIcons.chevronRight),
+                              ],
+                            ),
                             onPress: () => Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -249,6 +361,17 @@ class _QuestionSetListScreenState
                             suffix: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                GestureDetector(
+                                  onTap: () => _startListenMode(set),
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                      vertical: 8,
+                                    ),
+                                    child: Icon(FIcons.play),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
                                 GestureDetector(
                                   onTap: () => _manageQuestions(set),
                                   child: const Padding(

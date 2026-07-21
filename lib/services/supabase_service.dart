@@ -81,6 +81,18 @@ class SupabaseService {
     }
   }
 
+  /// Renames an existing folder or subfolder in place; parent and position
+  /// are left untouched.
+  Future<Folder> renameFolder(String id, String name) async {
+    final row = await _client
+        .from('folders')
+        .update({'name': name})
+        .eq('id', id)
+        .select()
+        .single();
+    return Folder.fromMap(row);
+  }
+
   /// Returns the existing folder named [name] (case-insensitive), or creates
   /// it if none exists yet — used to land custom exams in a "Custom" folder
   /// without erroring if it's already there from a previous custom exam.
