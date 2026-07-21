@@ -355,7 +355,10 @@ class _ExamRunnerScreenState extends ConsumerState<ExamRunnerScreen>
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Text(current.question.questionText),
+                          Text(
+                            current.question.questionText,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           const SizedBox(height: 12),
                           FTileGroup(
                             children: [

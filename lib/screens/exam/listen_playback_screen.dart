@@ -70,6 +70,13 @@ class _ListenPlaybackScreenState extends ConsumerState<ListenPlaybackScreen> {
   Future<void> _play() async {
     if (_playing) return;
     setState(() => _playing = true);
+    final tts = ref.read(ttsServiceProvider);
+    final voice = ref.read(ttsVoiceProvider);
+    if (voice != null) {
+      await tts.setVoice(voice);
+    } else {
+      await tts.selectDefaultMaleVoice();
+    }
     await _runFrom(_index, ++_runToken);
   }
 
@@ -205,7 +212,10 @@ class _ListenPlaybackScreenState extends ConsumerState<ListenPlaybackScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(current.questionText),
+                        Text(
+                          current.questionText,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                         const SizedBox(height: 12),
                         FTileGroup(
                           children: [

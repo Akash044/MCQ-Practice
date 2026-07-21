@@ -50,6 +50,7 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   final initialThemeMode = loadInitialThemeMode(prefs);
   final initialTtsAnswerDelaySeconds = loadInitialTtsAnswerDelaySeconds(prefs);
+  final initialTtsVoice = loadInitialTtsVoice(prefs);
 
   runApp(
     ProviderScope(
@@ -59,6 +60,9 @@ Future<void> main() async {
         ),
         ttsAnswerDelaySecondsProvider.overrideWith(
           (ref) => TtsAnswerDelayNotifier(prefs, initialTtsAnswerDelaySeconds),
+        ),
+        ttsVoiceProvider.overrideWith(
+          (ref) => TtsVoiceNotifier(prefs, initialTtsVoice),
         ),
       ],
       child: const McqApp(),

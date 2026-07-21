@@ -35,3 +35,35 @@ final ttsAnswerDelaySecondsProvider =
 int loadInitialTtsAnswerDelaySeconds(SharedPreferences prefs) {
   return prefs.getInt(_answerDelayPrefsKey) ?? defaultTtsAnswerDelaySeconds;
 }
+
+const _voicePrefsKey = 'ttsVoice';
+
+/// The user's explicitly-chosen TTS voice (name + locale, as returned by
+/// [TtsService.listVoices]) — null until they pick one via the voice
+/// chooser, in which case [TtsService.selectDefaultMaleVoice]'s heuristic
+/// guess is used instead. Persisted so the choice survives app restarts.
+class TtsVoiceNotifier extends StateNotifier<Map<String, String>?> {
+  TtsVoiceNotifier(this._prefs, Map<String, String>? initial) : super(initial);
+
+  final SharedPreferences _prefs;
+
+  void setVoice(Map<String, String> voice) {
+    state = voice;
+    _prefs.setString(_voicePrefsKey, '${voice['name']}|${voice['locale']}');
+  }
+}
+
+/// Overridden in main() once the persisted preference has been read from
+/// disk, same as themeModeProvider.
+final ttsVoiceProvider =
+    StateNotifierProvider<TtsVoiceNotifier, Map<String, String>?>((ref) {
+      throw UnimplementedError('ttsVoiceProvider must be overridden in main()');
+    });
+
+Map<String, String>? loadInitialTtsVoice(SharedPreferences prefs) {
+  final raw = prefs.getString(_voicePrefsKey);
+  if (raw == null) return null;
+  final parts = raw.split('|');
+  if (parts.length != 2) return null;
+  return {'name': parts[0], 'locale': parts[1]};
+}

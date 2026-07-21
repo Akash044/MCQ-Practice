@@ -155,6 +155,66 @@ class _QuestionSetListScreenState
     }
   }
 
+  Future<void> _chooseVoice() async {
+    final tts = ref.read(ttsServiceProvider);
+    final voices = await tts.listVoices();
+    if (!mounted) return;
+    final english = voices
+        .where((v) => v['locale']!.toLowerCase().startsWith('en'))
+        .toList();
+    final options = english.isNotEmpty ? english : voices;
+    if (options.isEmpty) {
+      showFToast(
+        context: context,
+        variant: FToastVariant.destructive,
+        title: const Text('No voices available on this device'),
+      );
+      return;
+    }
+
+    await showFDialog<void>(
+      context: context,
+      builder: (context, style, animation) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final current = ref.read(ttsVoiceProvider);
+          return FDialog(
+            title: const Text('Choose a voice'),
+            body: SizedBox(
+              width: double.maxFinite,
+              height: 320,
+              child: ListView.builder(
+                itemCount: options.length,
+                itemBuilder: (context, index) {
+                  final voice = options[index];
+                  final isSelected =
+                      current?['name'] == voice['name'] &&
+                      current?['locale'] == voice['locale'];
+                  return FTile(
+                    title: Text(voice['name']!),
+                    subtitle: Text(voice['locale']!),
+                    suffix: isSelected ? const Icon(FIcons.check) : null,
+                    onPress: () async {
+                      ref.read(ttsVoiceProvider.notifier).setVoice(voice);
+                      setDialogState(() {});
+                      await tts.setVoice(voice);
+                      await tts.speak('This is a preview of this voice.');
+                    },
+                  );
+                },
+              ),
+            ),
+            actions: [
+              FButton(
+                onPress: () => Navigator.pop(context),
+                child: const Text('Done'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _startListenMode(QuestionSet set) async {
     final controller = TextEditingController(
       text: '${ref.read(ttsAnswerDelaySecondsProvider)}',
@@ -163,11 +223,24 @@ class _QuestionSetListScreenState
       context: context,
       builder: (context, style, animation) => FDialog(
         title: const Text('Listen & Answer'),
-        body: FTextField(
-          autofocus: true,
-          label: const Text('Seconds before the answer is read aloud'),
-          keyboardType: TextInputType.number,
-          control: FTextFieldControl.managed(controller: controller),
+        body: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            FTextField(
+              autofocus: true,
+              label: const Text('Seconds before the answer is read aloud'),
+              keyboardType: TextInputType.number,
+              control: FTextFieldControl.managed(controller: controller),
+            ),
+            const SizedBox(height: 12),
+            FButton(
+              variant: FButtonVariant.outline,
+              onPress: _chooseVoice,
+              prefix: const Icon(FIcons.mic),
+              child: const Text('Choose voice'),
+            ),
+          ],
         ),
         actions: [
           FButton(
