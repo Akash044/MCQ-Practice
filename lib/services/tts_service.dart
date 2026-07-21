@@ -37,9 +37,17 @@ class TtsService {
 
   /// Switches the active voice — takes effect for every [speak] call after
   /// this until changed again.
+  ///
+  /// The short delay after the platform call is deliberate: on Android the
+  /// engine applies a voice switch asynchronously under the hood, so the
+  /// very next [speak] can otherwise still play in the *previous* voice —
+  /// this is why, without it, a question read right after switching voices
+  /// would come out in the old voice while everything spoken afterwards
+  /// (like the answer) correctly used the new one.
   Future<void> setVoice(Map<String, String> voice) async {
     try {
       await _tts.setVoice(voice);
+      await Future.delayed(const Duration(milliseconds: 300));
     } catch (_) {
       // Not every platform/engine supports explicit voice selection.
     }
@@ -56,30 +64,28 @@ class TtsService {
       final voices = await _tts.getVoices as List<dynamic>?;
       if (voices == null || voices.isEmpty) return;
 
+      // Deliberately no locale/language preference here — the app's
+      // question content isn't necessarily English (e.g. Bengali), so this
+      // just takes the first male-looking voice regardless of language
+      // rather than assuming English and picking a voice that can't
+      // actually pronounce the questions.
       Map<String, String>? bestMatch;
-      var bestIsEnglish = false;
       for (final raw in voices) {
         if (raw is! Map) continue;
         final name = '${raw['name'] ?? ''}'.toLowerCase();
         final gender = '${raw['gender'] ?? ''}'.toLowerCase();
-        final locale = '${raw['locale'] ?? ''}'.toLowerCase();
         final looksMale =
             (gender.contains('male') && !gender.contains('female')) ||
             (gender.isEmpty &&
                 name.contains('male') &&
                 !name.contains('female'));
         if (!looksMale) continue;
-
-        final isEnglish = locale.startsWith('en');
-        if (bestMatch == null || (isEnglish && !bestIsEnglish)) {
-          bestMatch = {'name': '${raw['name']}', 'locale': '${raw['locale']}'};
-          bestIsEnglish = isEnglish;
-          if (isEnglish) break;
-        }
+        bestMatch = {'name': '${raw['name']}', 'locale': '${raw['locale']}'};
+        break;
       }
 
       if (bestMatch != null) {
-        await _tts.setVoice(bestMatch);
+        await setVoice(bestMatch);
       } else {
         await _tts.setPitch(0.85);
       }

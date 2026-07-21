@@ -157,12 +157,11 @@ class _QuestionSetListScreenState
 
   Future<void> _chooseVoice() async {
     final tts = ref.read(ttsServiceProvider);
-    final voices = await tts.listVoices();
+    // Every voice the device offers, not just English ones — question
+    // content isn't necessarily English (e.g. Bengali), and filtering to
+    // "en*" locales would hide the exact voices that can pronounce it.
+    final options = await tts.listVoices();
     if (!mounted) return;
-    final english = voices
-        .where((v) => v['locale']!.toLowerCase().startsWith('en'))
-        .toList();
-    final options = english.isNotEmpty ? english : voices;
     if (options.isEmpty) {
       showFToast(
         context: context,
