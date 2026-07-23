@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_quill/flutter_quill.dart' show FlutterQuillLocalizations;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -84,6 +85,12 @@ class McqApp extends ConsumerWidget {
       themeMode: themeMode,
       theme: lightTheme.toApproximateMaterialTheme(),
       darkTheme: darkTheme.toApproximateMaterialTheme(),
+      // The subfolder lecture-notes editor uses flutter_quill, which needs
+      // its own localizations delegate registered here — without it, the
+      // editor/toolbar throw on build and (in release mode) silently render
+      // as a blank box instead of a visible error.
+      localizationsDelegates: FlutterQuillLocalizations.localizationsDelegates,
+      supportedLocales: FlutterQuillLocalizations.supportedLocales,
       builder: (context, child) {
         final resolvedBrightness = switch (themeMode) {
           ThemeMode.light => Brightness.light,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart'
     show MaterialPageRoute, ReorderableDelayedDragStartListener, TextInputType;
 import 'package:flutter/widgets.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
 
@@ -52,6 +53,45 @@ class _QuestionSetListScreenState
     setState(() => _notes = result.isEmpty ? null : result);
   }
 
+  Future<void> _viewNotes(BuildContext context) async {
+    final notes = _notes;
+    if (notes == null || notes.isEmpty) return;
+    final controller = QuillController(
+      document: documentFromNotes(notes),
+      selection: const TextSelection.collapsed(offset: 0),
+      readOnly: true,
+    );
+    await showFDialog<void>(
+      context: context,
+      builder: (context, style, animation) => FDialog(
+        title: const Text('Lecture Notes'),
+        body: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: QuillEditor.basic(
+            controller: controller,
+            config: const QuillEditorConfig(expands: true),
+          ),
+        ),
+        actions: [
+          FButton(
+            variant: FButtonVariant.outline,
+            onPress: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          FButton(
+            onPress: () {
+              Navigator.pop(context);
+              _openNotes(context);
+            },
+            child: const Text('Edit'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+  }
+
   Widget _buildNotesBanner(BuildContext context) {
     final notes = _notes;
     if (notes == null || notes.isEmpty) {
@@ -65,16 +105,31 @@ class _QuestionSetListScreenState
     // Notes are stored as JSON-encoded Quill Delta ops, not plain text — the
     // preview only needs the plain-text content, not the formatting.
     final preview = notesPreviewText(notes);
-    return GestureDetector(
-      onTap: () => _openNotes(context),
-      child: FCard(
-        title: Row(
-          children: const [
-            Icon(FIcons.notebookText, size: 16),
-            SizedBox(width: 8),
-            Text('Lecture notes'),
-          ],
-        ),
+    return FCard(
+      title: Row(
+        children: [
+          const Icon(FIcons.notebookText, size: 16),
+          const SizedBox(width: 8),
+          const Expanded(child: Text('Lecture notes')),
+          GestureDetector(
+            onTap: () => _viewNotes(context),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              child: Icon(FIcons.eye, size: 16),
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: () => _openNotes(context),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              child: Icon(FIcons.pencil, size: 16),
+            ),
+          ),
+        ],
+      ),
+      child: GestureDetector(
+        onTap: () => _viewNotes(context),
         child: Text(preview, maxLines: 3, overflow: TextOverflow.ellipsis),
       ),
     );
