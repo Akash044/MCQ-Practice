@@ -11,6 +11,7 @@ import '../../providers/question_set_providers.dart';
 import '../../providers/supabase_providers.dart';
 import '../../providers/tts_providers.dart';
 import '../../utils/network_error.dart';
+import '../../utils/rich_text_notes.dart';
 import '../../widgets/error_state.dart';
 import '../exam/exam_setup_screen.dart';
 import '../exam/listen_playback_screen.dart';
@@ -18,6 +19,7 @@ import '../exam/manage_questions_screen.dart';
 import '../import/import_screen.dart';
 import '../progress/folder_progress_screen.dart';
 import 'create_subfolder_screen.dart';
+import 'subfolder_notes_screen.dart';
 
 class QuestionSetListScreen extends ConsumerStatefulWidget {
   const QuestionSetListScreen({super.key, required this.folder});
@@ -36,6 +38,47 @@ class _QuestionSetListScreenState
   /// Supabase.
   List<QuestionSet>? _reordering;
   List<Folder>? _reorderingFolders;
+  late String? _notes = widget.folder.notes;
+
+  Future<void> _openNotes(BuildContext context) async {
+    final result = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            SubfolderNotesScreen(folder: widget.folder.copyWith(notes: _notes)),
+      ),
+    );
+    if (result == null) return;
+    setState(() => _notes = result.isEmpty ? null : result);
+  }
+
+  Widget _buildNotesBanner(BuildContext context) {
+    final notes = _notes;
+    if (notes == null || notes.isEmpty) {
+      return FButton(
+        variant: FButtonVariant.outline,
+        onPress: () => _openNotes(context),
+        prefix: const Icon(FIcons.notebookText),
+        child: const Text('Add lecture notes'),
+      );
+    }
+    // Notes are stored as JSON-encoded Quill Delta ops, not plain text — the
+    // preview only needs the plain-text content, not the formatting.
+    final preview = notesPreviewText(notes);
+    return GestureDetector(
+      onTap: () => _openNotes(context),
+      child: FCard(
+        title: Row(
+          children: const [
+            Icon(FIcons.notebookText, size: 16),
+            SizedBox(width: 8),
+            Text('Lecture notes'),
+          ],
+        ),
+        child: Text(preview, maxLines: 3, overflow: TextOverflow.ellipsis),
+      ),
+    );
+  }
 
   Future<void> _import(BuildContext context, WidgetRef ref) async {
     final imported = await Navigator.push<bool>(
@@ -321,7 +364,24 @@ class _QuestionSetListScreenState
           ),
         ],
       ),
-      child: setsAsync.when(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (isSubfolder) ...[
+            _buildNotesBanner(context),
+            const SizedBox(height: 12),
+          ],
+          Expanded(child: _buildBody(setsAsync, childFoldersAsync)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody(
+    AsyncValue<List<QuestionSet>> setsAsync,
+    AsyncValue<List<Folder>> childFoldersAsync,
+  ) {
+    return setsAsync.when(
         loading: () => const Center(child: FCircularProgress()),
         error: (err, stack) =>
             ErrorState(error: err, label: 'Failed to load question sets'),
@@ -506,7 +566,6 @@ class _QuestionSetListScreenState
             );
           },
         ),
-      ),
-    );
+      );
   }
 }

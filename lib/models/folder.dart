@@ -3,6 +3,7 @@ class Folder {
   final String name;
   final String? parentId;
   final int position;
+  final String? notes;
   final DateTime createdAt;
 
   const Folder({
@@ -10,6 +11,7 @@ class Folder {
     required this.name,
     this.parentId,
     this.position = 0,
+    this.notes,
     required this.createdAt,
   });
 
@@ -19,11 +21,23 @@ class Folder {
       name: map['name'] as String,
       parentId: map['parent_id'] as String?,
       position: (map['position'] as int?) ?? 0,
+      notes: map['notes'] as String?,
       createdAt: DateTime.parse(map['created_at'] as String),
     );
   }
 
   Map<String, dynamic> toInsertMap() {
     return {'name': name, if (parentId != null) 'parent_id': parentId};
+  }
+
+  Folder copyWith({String? notes}) {
+    return Folder(
+      id: id,
+      name: name,
+      parentId: parentId,
+      position: position,
+      notes: notes,
+      createdAt: createdAt,
+    );
   }
 }

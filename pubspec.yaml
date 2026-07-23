@@ -72,6 +72,7 @@ dependencies:
 
   # Reads questions/answers aloud for the exam-list "listen & answer" mode
   flutter_tts: ^4.2.5
+  flutter_quill: ^11.5.0
 
 dev_dependencies:
   flutter_test:

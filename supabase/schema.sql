@@ -10,6 +10,7 @@ create table folders (
   name text not null,
   parent_id uuid references folders(id) on delete cascade,
   position int not null default 0,  -- manual drag-order among siblings (same parent_id)
+  notes text,                       -- free-text lecture notes (subfolders only, at the app layer)
   created_at timestamptz default now()
 );
 

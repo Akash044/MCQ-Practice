@@ -93,6 +93,18 @@ class SupabaseService {
     return Folder.fromMap(row);
   }
 
+  /// Sets (or, with [notes] null, clears) a subfolder's free-text lecture
+  /// notes.
+  Future<Folder> updateFolderNotes(String id, String? notes) async {
+    final row = await _client
+        .from('folders')
+        .update({'notes': notes})
+        .eq('id', id)
+        .select()
+        .single();
+    return Folder.fromMap(row);
+  }
+
   /// Returns the existing folder named [name] (case-insensitive), or creates
   /// it if none exists yet — used to land custom exams in a "Custom" folder
   /// without erroring if it's already there from a previous custom exam.
