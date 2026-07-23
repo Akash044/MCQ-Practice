@@ -57,7 +57,7 @@ class _ExamSetupScreenState extends ConsumerState<ExamSetupScreen> {
   bool _shuffleQuestions = true;
   bool _shuffleOptions = true;
 
-  bool _examTimerEnabled = false;
+  bool _examTimerEnabled = true;
   bool _perQuestionTimerEnabled = false;
 
   late final TextEditingController _marksController;
