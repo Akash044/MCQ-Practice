@@ -6,6 +6,7 @@ import 'package:forui/forui.dart';
 
 import '../../models/folder.dart';
 import '../../models/question_set.dart';
+import '../../providers/exam_providers.dart';
 import '../../providers/question_set_providers.dart';
 import '../../providers/supabase_providers.dart';
 import '../../providers/tts_providers.dart';
@@ -157,11 +158,21 @@ class _QuestionSetListScreenState
 
   Future<void> _chooseVoice() async {
     final tts = ref.read(ttsServiceProvider);
-    // Every voice the device offers, not just English ones — question
-    // content isn't necessarily English (e.g. Bengali), and filtering to
-    // "en*" locales would hide the exact voices that can pronounce it.
-    final options = await tts.listVoices();
+    final allVoices = await tts.listVoices();
     if (!mounted) return;
+    // Restrict the picker to Bengali (question content) and US/UK English
+    // voices — the device's full voice list is usually much longer and
+    // mostly irrelevant. Falls back to the full list if none of those
+    // happen to be installed, so the picker never ends up empty.
+    bool isWanted(Map<String, String> voice) {
+      final locale = voice['locale']!.toLowerCase().replaceAll('_', '-');
+      return locale.startsWith('bn') ||
+          locale.startsWith('en-us') ||
+          locale.startsWith('en-gb');
+    }
+
+    final filtered = allVoices.where(isWanted).toList();
+    final options = filtered.isNotEmpty ? filtered : allVoices;
     if (options.isEmpty) {
       showFToast(
         context: context,
@@ -415,6 +426,15 @@ class _QuestionSetListScreenState
                         _reorder(sets, oldIndex, newIndex),
                     itemBuilder: (context, index) {
                       final set = sets[index];
+                      final attemptCount = ref
+                          .watch(attemptHistoryProvider(set.id))
+                          .valueOrNull
+                          ?.length;
+                      final subtitleParts = [
+                        if (set.subject != null) set.subject!,
+                        if (attemptCount != null)
+                          '$attemptCount attempt${attemptCount == 1 ? '' : 's'}',
+                      ];
                       return ReorderableDelayedDragStartListener(
                         key: ValueKey(set.id),
                         index: index,
@@ -427,9 +447,9 @@ class _QuestionSetListScreenState
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            subtitle: set.subject != null
-                                ? Text(set.subject!)
-                                : null,
+                            subtitle: subtitleParts.isEmpty
+                                ? null
+                                : Text(subtitleParts.join(' • ')),
                             suffix: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
